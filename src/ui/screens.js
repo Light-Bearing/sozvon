@@ -1,4 +1,4 @@
-export const SCREENS = ['start', 'join', 'call', 'failed'];
+export const SCREENS = ['start', 'join', 'call', 'failed', 'diagnostics'];
 
 export const showScreen = (root, name) => {
   if (!SCREENS.includes(name)) throw new Error(`Нет такого экрана: ${name}`);

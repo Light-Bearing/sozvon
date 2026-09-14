@@ -2,6 +2,7 @@ import {generateSecret, linkToSecret} from './room-secret.js';
 import {createRoom} from './room.js';
 import {renderCall} from './ui/call.js';
 import {explainFailure, showScreen} from './ui/screens.js';
+import {renderDiagnostics} from './ui/diagnostics.js';
 
 const app = document.querySelector('#app');
 
@@ -60,6 +61,19 @@ app.querySelector('#retry').onclick = () => {
   if (!invited) location.hash = '';
   location.reload();
 };
+
+let screenBeforeDiagnostics = 'start';
+
+for (const button of app.querySelectorAll('[data-diagnostics]')) {
+  button.onclick = () => {
+    screenBeforeDiagnostics = app.querySelector('#screen-failed').hidden ? 'start' : 'failed';
+    showScreen(app, 'diagnostics');
+    void renderDiagnostics(app.querySelector('#diagnostics-body'));
+  };
+}
+
+app.querySelector('#diagnostics-close').onclick = () =>
+  showScreen(app, screenBeforeDiagnostics);
 
 // Гость видит, кто зовёт, и жмёт кнопку. Камеру браузер спросит только
 // после нажатия — если спросить при загрузке, половина людей уходит.
