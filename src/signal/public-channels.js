@@ -56,6 +56,7 @@ export const joinPublicChannels = ({roomId, password, handlers, families = FAMIL
         return;
       }
 
+      streamedPeers.delete(peerId);
       handlers.onPeerLeave?.(peerId);
     };
     room.onPeerStream = (stream, peerId) => {

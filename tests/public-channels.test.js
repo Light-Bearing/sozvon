@@ -183,4 +183,27 @@ describe('публичные каналы: адресная доставка', (
       expect(connection.getPeers()).not.toHaveProperty('петя');
     });
   });
+
+  describe('переподключение участника', () => {
+    it('участник полностью ушёл, вернулся в той же сессии — его новый поток доходит наверх', () => {
+      const stream1 = {id: 's1'};
+      const stream2 = {id: 's2'};
+
+      fakes.torrent.join('петя');
+      fakes.torrent.stream(stream1, 'петя');
+      expect(handlers.onPeerStream).toHaveBeenCalledTimes(1);
+      expect(handlers.onPeerStream).toHaveBeenCalledWith(stream1, 'петя');
+
+      handlers.onPeerStream.mockClear();
+      fakes.torrent.leave('петя');
+      expect(handlers.onPeerLeave).toHaveBeenCalledTimes(1);
+      expect(handlers.onPeerLeave).toHaveBeenCalledWith('петя');
+
+      fakes.torrent.join('петя');
+      fakes.torrent.stream(stream2, 'петя');
+
+      expect(handlers.onPeerStream).toHaveBeenCalledTimes(1);
+      expect(handlers.onPeerStream).toHaveBeenCalledWith(stream2, 'петя');
+    });
+  });
 });
