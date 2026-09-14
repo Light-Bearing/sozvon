@@ -3,61 +3,101 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111815" />
     <title>Созвон</title>
-    <style>
-      body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 1rem; }
-      #tiles { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-      .tile { position: relative; background: #111; border-radius: .5rem; overflow: hidden; }
-      .tile video { width: 100%; display: block; aspect-ratio: 16/9; object-fit: cover; }
-      .tile-name { position: absolute; left: .5rem; bottom: .5rem; color: #fff; }
-      .link-row { display: flex; gap: .5rem; margin: .75rem 0; }
-      #link { flex: 1; font-size: 1rem; padding: .5rem; }
-      .controls { display: flex; gap: .5rem; }
-      button { font-size: 1rem; padding: .6rem 1rem; cursor: pointer; }
-      .quiet { color: #666; font-size: .9rem; }
-      .quiet-button { background: none; border: none; color: #666; text-decoration: underline; }
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600&family=Golos+Text:wght@400;500;600&family=Martian+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <main id="app">
       <section id="screen-start">
-        <h1>Созвон</h1>
-        <p>Разговор напрямую, без регистрации.</p>
-        <button id="start">Позвонить</button>
-        <button data-diagnostics class="quiet-button">Диагностика</button>
+        <h1 class="wordmark">Со<span>звон</span></h1>
+        <p class="lede">
+          Разговор напрямую между устройствами. <b>Ссылка работает как номерок в
+          гардеробе: у кого она — тот и войдёт.</b> Ни аккаунтов, ни установки,
+          ни платы.
+        </p>
+        <div class="row">
+          <button id="start" class="tag tag--action" type="button">
+            <span class="tag-label">Взять номерок</span>
+            <span class="tag-title">Позвонить</span>
+          </button>
+        </div>
+        <p class="footnote">
+          Звук и картинка идут между устройствами, минуя посредников.
+        </p>
+        <div class="row">
+          <button data-diagnostics class="btn btn--quiet" type="button">
+            Проверить связь
+          </button>
+        </div>
       </section>
 
       <section id="screen-join" hidden>
-        <h1>Вас зовут поговорить</h1>
-        <p>Ничего устанавливать не нужно, регистрация не требуется.</p>
-        <button id="join">Войти в разговор</button>
-        <p class="quiet">После нажатия браузер спросит разрешение на камеру и микрофон.</p>
+        <h1 class="headline">Вас зовут поговорить</h1>
+        <p class="lede">
+          Номерок уже у вас — это ссылка, по которой вы пришли. Регистрация не
+          нужна, устанавливать ничего не надо.
+        </p>
+        <div class="row">
+          <button id="join" class="tag tag--action" type="button">
+            <span class="tag-label">Номерок при вас</span>
+            <span class="tag-title">Войти в разговор</span>
+          </button>
+        </div>
+        <p class="footnote">
+          После нажатия браузер спросит разрешение на камеру и микрофон.
+        </p>
       </section>
 
-      <section id="screen-call" hidden>
-        <div id="tiles"></div>
-        <p id="waiting">Жду, когда зайдут. Отправьте ссылку:</p>
-        <div class="link-row">
-          <input id="link" readonly />
-          <button id="copy">Скопировать</button>
+      <section id="screen-call" class="call" hidden>
+        <div id="invite">
+          <h2 class="headline">Отдайте номерок</h2>
+          <p class="lede">
+            Отправьте ссылку тем, кого зовёте, — любым способом. Кто перешёл,
+            тот и в разговоре.
+          </p>
+          <button data-copy class="tag tag--hung" type="button">
+            <span class="tag-label">Нажмите, чтобы скопировать</span>
+            <span data-link class="tag-code"></span>
+          </button>
+          <p class="waiting" id="waiting">Жду, когда зайдут</p>
         </div>
+
+        <div id="tiles" class="tiles"></div>
+
         <div class="controls">
-          <button id="mic">Микрофон</button>
-          <button id="cam">Камера</button>
-          <button id="hangup">Положить трубку</button>
+          <button id="mic" class="btn" type="button" aria-pressed="true">Микрофон</button>
+          <button id="cam" class="btn" type="button" aria-pressed="true">Камера</button>
+          <span class="spacer"></span>
+          <button data-copy class="tag tag--pocket" type="button" hidden>
+            <span data-link class="tag-code"></span>
+            <span>Скопировать</span>
+          </button>
+          <button id="hangup" class="btn btn--leave" type="button">Положить трубку</button>
         </div>
       </section>
 
-      <section id="screen-failed" hidden>
-        <h1 id="failed-title"></h1>
-        <p id="failed-advice"></p>
-        <button id="retry">Попробовать снова</button>
-        <button data-diagnostics class="quiet-button">Диагностика</button>
+      <section id="screen-failed" class="failed" hidden>
+        <h1 id="failed-title" class="headline"></h1>
+        <p id="failed-advice" class="lede"></p>
+        <div class="row">
+          <button id="retry" class="btn btn--brass" type="button">Попробовать снова</button>
+          <button data-diagnostics class="btn btn--quiet" type="button">Проверить связь</button>
+        </div>
       </section>
 
       <section id="screen-diagnostics" hidden>
-        <div id="diagnostics-body"></div>
-        <button id="diagnostics-close">Назад</button>
+        <h1 class="headline">Проверка связи</h1>
+        <div id="diagnostics-body" class="diag"></div>
+        <div class="row">
+          <button id="diagnostics-close" class="btn" type="button">Назад</button>
+        </div>
       </section>
     </main>
     <script type="module" src="/src/main.js"></script>

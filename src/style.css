@@ -1,0 +1,429 @@
+/* «Созвон» — тёмный гардероб, латунный номерок.
+   Ссылка здесь работает как номерок: у кого она, тот и войдёт. Вся
+   образность отсюда, а не придумана поверх. */
+
+:root {
+  --ink: #111815;
+  --ink-raise: #1a2420;
+  --ink-sink: #0b100e;
+  --hairline: #26322d;
+
+  --brass: #c9a24a;
+  --brass-lit: #e8c877;
+  --brass-deep: #7e6227;
+
+  --chalk: #e6e4dc;
+  --muted: #8a938c;
+  --brick: #be5a43;
+
+  --step: clamp(0.9rem, 0.6rem + 0.8vw, 1.05rem);
+  --gap: clamp(1rem, 0.6rem + 1.6vw, 1.75rem);
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(120% 90% at 50% -10%, #16201c 0%, var(--ink) 55%, var(--ink-sink) 100%);
+  color: var(--chalk);
+  font: var(--step)/1.6 'Golos Text', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--gap);
+}
+
+section {
+  width: min(100%, 44rem);
+  animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+}
+
+/* ── заголовки ─────────────────────────────────────────── */
+
+.wordmark {
+  font-family: 'Unbounded', 'Golos Text', sans-serif;
+  font-weight: 600;
+  font-size: clamp(2.2rem, 1.4rem + 3.4vw, 3.4rem);
+  letter-spacing: -0.03em;
+  line-height: 1;
+  margin: 0;
+}
+
+.wordmark span { color: var(--muted); font-weight: 500; }
+
+.headline {
+  font-family: 'Unbounded', 'Golos Text', sans-serif;
+  font-weight: 500;
+  font-size: clamp(1.5rem, 1.1rem + 1.8vw, 2.1rem);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0 0 0.6rem;
+}
+
+.lede {
+  color: var(--muted);
+  max-width: 34rem;
+  margin: 0.9rem 0 0;
+}
+
+.lede b {
+  color: var(--chalk);
+  font-weight: 500;
+}
+
+.footnote {
+  color: var(--muted);
+  font-size: 0.86em;
+  margin: 0.8rem 0 0;
+}
+
+/* ── номерок ───────────────────────────────────────────── */
+
+.tag {
+  position: relative;
+  display: block;
+  width: 100%;
+  border: 0;
+  padding: 1.5rem 1.4rem 1.3rem;
+  border-radius: 18px;
+  text-align: left;
+  color: #2a2109;
+  font-family: inherit;
+  background:
+    linear-gradient(158deg, var(--brass-lit) 0%, var(--brass) 38%, #b08e3d 62%, var(--brass-deep) 100%);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 248, 222, 0.85),
+    inset 0 0 0 1px rgba(255, 240, 200, 0.18),
+    inset 0 -3px 0 rgba(58, 42, 8, 0.45),
+    0 18px 38px -14px rgba(0, 0, 0, 0.9);
+}
+
+/* дырка, через которую номерок вешают на крючок */
+.tag::before {
+  content: '';
+  position: absolute;
+  top: 0.85rem;
+  left: 50%;
+  translate: -50% 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: var(--ink-sink);
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 246, 214, 0.45);
+}
+
+.tag--hung {
+  width: min(100%, 26rem);
+  padding-top: 2.9rem;
+  rotate: -1.1deg;
+  transform-origin: 50% 1.4rem;
+  animation: sway 1.4s cubic-bezier(0.3, 0.8, 0.4, 1) both;
+}
+
+@keyframes sway {
+  0%   { rotate: -6deg; }
+  40%  { rotate: 2.5deg; }
+  70%  { rotate: -2deg; }
+  100% { rotate: -1.1deg; }
+}
+
+.tag-label {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(42, 33, 9, 0.62);
+  margin-bottom: 0.35rem;
+}
+
+.tag-code {
+  display: block;
+  font-family: 'Martian Mono', ui-monospace, monospace;
+  font-weight: 500;
+  font-size: clamp(0.85rem, 0.55rem + 1.35vw, 1.3rem);
+  letter-spacing: -0.03em;
+  word-break: break-all;
+  line-height: 1.35;
+  /* выштамповано, а не напечатано */
+  text-shadow: 0 1px 0 rgba(255, 246, 214, 0.5);
+}
+
+/* Номерок как кнопка «Позвонить» на первом экране.
+   Ширину держим небольшой намеренно: номерок — вещь, которую держат
+   в руке, а растянутый во всю строку он читается золотым бруском. */
+.tag--action {
+  width: min(100%, 19rem);
+  cursor: pointer;
+  text-align: center;
+  padding: 2.9rem 1.4rem 1.7rem;
+  border-radius: 20px;
+  transition: translate 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tag--action .tag-title {
+  font-family: 'Unbounded', sans-serif;
+  font-weight: 600;
+  font-size: clamp(1.15rem, 0.9rem + 1vw, 1.5rem);
+  letter-spacing: -0.02em;
+  display: block;
+}
+
+.tag--action:hover { translate: 0 -2px; }
+
+.tag--action:active {
+  translate: 0 1px;
+  box-shadow: inset 0 2px 6px rgba(60, 44, 10, 0.5);
+}
+
+/* маленький номерок в углу экрана звонка */
+.tag--pocket {
+  width: auto;
+  padding: 0.55rem 0.85rem;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.tag--pocket::before { display: none; }
+
+.tag--pocket .tag-code {
+  font-size: 0.78rem;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+/* ── кнопки ────────────────────────────────────────────── */
+
+.btn {
+  font: inherit;
+  font-weight: 500;
+  color: var(--chalk);
+  background: var(--ink-raise);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 0.7rem 1.2rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.btn:hover { border-color: var(--brass-deep); }
+
+.btn--brass {
+  background: var(--brass);
+  border-color: var(--brass-lit);
+  color: #241c06;
+  font-weight: 600;
+}
+
+.btn--brass:hover { background: var(--brass-lit); }
+
+.btn--quiet {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  padding: 0.6rem 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.btn--quiet:hover { color: var(--brass); }
+
+.btn--leave {
+  background: none;
+  border-color: rgba(190, 90, 67, 0.45);
+  color: var(--brick);
+}
+
+.btn--leave:hover {
+  background: rgba(190, 90, 67, 0.12);
+  border-color: var(--brick);
+}
+
+.btn[aria-pressed='false'] {
+  color: var(--muted);
+  border-style: dashed;
+}
+
+:where(button, [href], input):focus-visible {
+  outline: 2px solid var(--brass-lit);
+  outline-offset: 3px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-top: 1.4rem;
+}
+
+/* ── ожидание ──────────────────────────────────────────── */
+
+.waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--muted);
+  margin: 1.2rem 0 0;
+}
+
+.waiting::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brass);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  50% { opacity: 0.2; }
+}
+
+/* ── экран звонка ──────────────────────────────────────── */
+
+.call { width: min(100%, 68rem); }
+
+.tiles {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+}
+
+.tiles--alone {
+  grid-template-columns: minmax(0, 15rem);
+  margin-top: 1.4rem;
+}
+
+.tile {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--ink-sink);
+  border: 1px solid var(--hairline);
+}
+
+.tile video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.tile--self { border-color: var(--brass-deep); }
+
+.tile--dark::after {
+  content: attr(data-initial);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: 'Unbounded', sans-serif;
+  font-size: 2.4rem;
+  color: var(--brass-deep);
+  background: var(--ink-raise);
+}
+
+.tile-name {
+  position: absolute;
+  /* поверх заливки: у плитки без картинки заливка рисуется после и
+     иначе накрывает подпись */
+  z-index: 1;
+  left: 0.6rem;
+  bottom: 0.6rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  background: rgba(11, 16, 14, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  align-items: center;
+}
+
+.controls .spacer { flex: 1; }
+
+/* ── диагностика ───────────────────────────────────────── */
+
+.diag h2 {
+  font-family: 'Unbounded', sans-serif;
+  font-weight: 500;
+  font-size: 0.82rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brass);
+  margin: 1.6rem 0 0.5rem;
+}
+
+.diag h2:first-child { margin-top: 0; }
+
+.diag p { margin: 0.3rem 0; }
+
+.diag ul {
+  list-style: none;
+  padding: 0;
+  margin: 0.6rem 0 0;
+  font-family: 'Martian Mono', ui-monospace, monospace;
+  font-size: 0.74rem;
+  line-height: 2.1;
+}
+
+.diag li {
+  display: flex;
+  gap: 0.7rem;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diag li[data-ok='yes'] { color: var(--chalk); }
+.diag li[data-ok='yes'] .mark { color: var(--brass); }
+.diag li[data-ok='no'] .mark { color: var(--brick); }
+
+/* ── неудача ───────────────────────────────────────────── */
+
+.failed .headline { color: var(--brick); }
+
+/* ── мелкие экраны ─────────────────────────────────────── */
+
+@media (max-width: 30rem) {
+  .row .btn, .controls .btn { flex: 1 1 auto; }
+  .controls .spacer { display: none; }
+  .tag--pocket { width: 100%; }
+  .tag--pocket .tag-code { max-width: none; flex: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .tag--hung { rotate: 0deg; }
+}

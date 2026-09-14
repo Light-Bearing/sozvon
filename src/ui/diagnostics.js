@@ -184,7 +184,21 @@ export const renderDiagnostics = async container => {
   const list = document.createElement('ul');
   for (const {family, url, ok, ms} of relays) {
     const item = document.createElement('li');
-    item.textContent = `${ok ? '✓' : '✗'} ${family} — ${url}${ok ? ` (${ms} мс)` : ''}`;
+    item.dataset.ok = ok ? 'yes' : 'no';
+
+    const mark = document.createElement('span');
+    mark.className = 'mark';
+    mark.textContent = ok ? '✓' : '✗';
+
+    const where = document.createElement('span');
+    where.textContent = `${family} · ${url}`;
+
+    item.append(mark, where);
+    if (ok) {
+      const took = document.createElement('span');
+      took.textContent = `${ms} мс`;
+      item.append(took);
+    }
     list.append(item);
   }
   container.append(list);
