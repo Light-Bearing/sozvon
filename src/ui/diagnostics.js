@@ -9,17 +9,36 @@ const STUN_SERVERS = [
   'stun:stun.nextcloud.com:3478',
 ];
 
+// У отражённого (srflx) кандидата ip:port — внешний адрес, каким его
+// увидел STUN-сервер. raddr:rport — локальный адрес и порт, с которого
+// ушёл запрос. Сравнивать внешние порты честно можно только у кандидатов
+// с одинаковым rport: это значит, что они добыты с одного и того же
+// локального порта.
 const reflexiveFrom = candidate => {
   const parts = candidate.split(' ');
-  return parts[7] === 'srflx' ? {ip: parts[4], port: Number(parts[5])} : null;
+  if (parts[7] !== 'srflx') return null;
+  const raddrAt = parts.indexOf('raddr');
+  const rportAt = parts.indexOf('rport');
+  return {
+    ip: parts[4],
+    port: Number(parts[5]),
+    raddr: raddrAt >= 0 ? parts[raddrAt + 1] : null,
+    rport: rportAt >= 0 ? Number(parts[rportAt + 1]) : null,
+  };
 };
 
-// Собираем адреса через каждый STUN отдельно: если внешний порт у всех
-// один — NAT дружелюбный, если разный — симметричный, и прямая связь
-// с таким же собеседником не встанет.
-const gatherVia = urls =>
+// Все STUN-серверы — в ОДНОМ RTCPeerConnection, одним списком iceServers,
+// а не по отдельному соединению на сервер. У раздельных соединений разные
+// локальные UDP-порты, и на NAT, который сохраняет порт (внешний порт
+// равен локальному), это выглядело бы как смена внешнего порта от
+// собеседника к собеседнику — то есть как симметричный NAT, хотя на
+// самом деле это просто три разных локальных порта на ровном месте.
+// Один RTCPeerConnection — как правило один локальный порт на все
+// STUN-запросы, и тогда разница во внешних портах значит то, что должна:
+// зависимость отображения от собеседника, а не от того, откуда спросили.
+const gatherAll = () =>
   new Promise(resolve => {
-    const pc = new RTCPeerConnection({iceServers: [{urls}]});
+    const pc = new RTCPeerConnection({iceServers: STUN_SERVERS.map(urls => ({urls}))});
     const found = [];
     const finish = () => {
       pc.close();
@@ -41,10 +60,9 @@ const gatherVia = urls =>
   });
 
 export const checkNat = async () => {
-  const results = await Promise.all(STUN_SERVERS.map(url => gatherVia(url)));
-  const seen = results.flat();
+  const found = await gatherAll();
 
-  if (!seen.length) {
+  if (!found.length) {
     return {
       verdict: 'Снаружи вас не видно — похоже, сеть закрывает UDP. Прямая связь здесь не встанет.',
       external: null,
@@ -52,15 +70,50 @@ export const checkNat = async () => {
     };
   }
 
-  const ips = [...new Set(seen.map(s => s.ip))];
-  const ports = [...new Set(seen.map(s => s.port))];
+  const external = [...new Set(found.map(s => s.ip))].join(', ');
+  const ports = [...new Set(found.map(s => s.port))];
 
-  const verdict =
-    ports.length === 1
-      ? 'NAT дружелюбный: порт снаружи один и тот же. Прямая связь будет вставать.'
-      : 'NAT симметричный: порт снаружи меняется. С таким же собеседником прямая связь не встанет — нужен ретранслятор.';
+  // Хоть один STUN отразил тот же адрес, что и локальный (raddr) —
+  // транслятора вообще нет, адрес и так публичный. Это видно уже по
+  // одному ответу, сравнивать не с чем и не нужно.
+  if (found.some(s => s.ip === s.raddr)) {
+    return {
+      verdict: 'NAT нет: адрес и так публичный. Прямая связь будет вставать всегда.',
+      external,
+      ports,
+    };
+  }
 
-  return {verdict, external: ips.join(', '), ports};
+  // Группируем по локальному порту (rport), с которого ушёл запрос —
+  // внутри одной группы кандидаты сравнимы честно. Группа из одного
+  // кандидата сравнению не подлежит: не с чем сверить.
+  const groups = new Map();
+  for (const s of found) {
+    if (!groups.has(s.rport)) groups.set(s.rport, []);
+    groups.get(s.rport).push(s);
+  }
+  const comparable = [...groups.values()].filter(group => group.length > 1);
+
+  // Единственный кандидат бывает двумя разными путями: либо и правда
+  // ответил только один STUN, либо ответили все, но сошлись в одном и
+  // том же адресе — тогда браузер сам убрал дубликаты как избыточные,
+  // и это на самом деле дружелюбный NAT, просто через RTCPeerConnection
+  // это от «ответил один» не отличить. Раз не отличить — не гадаем.
+  if (!comparable.length) {
+    return {
+      verdict: 'Отражённый адрес получен только один: сравнивать не с чем, тип NAT не определить.',
+      external,
+      ports,
+    };
+  }
+
+  const symmetric = comparable.some(group => new Set(group.map(s => s.port)).size > 1);
+
+  const verdict = symmetric
+    ? 'NAT симметричный: порт снаружи меняется. С таким же собеседником прямая связь не встанет — нужен ретранслятор.'
+    : 'NAT дружелюбный: порт снаружи один и тот же. Прямая связь будет вставать.';
+
+  return {verdict, external, ports};
 };
 
 const pingRelay = url =>
