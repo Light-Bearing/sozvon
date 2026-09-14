@@ -59,7 +59,13 @@ export const createRoom = async ({
   const applyBitrateCeiling = async () => {
     for (const pc of Object.values(connection.getPeers())) {
       for (const sender of pc.getSenders()) {
-        if (sender.track?.kind === 'video') await setMaxBitrate(sender, step.maxBitrate);
+        try {
+          if (sender.track?.kind === 'video') await setMaxBitrate(sender, step.maxBitrate);
+        } catch {
+          // Соединение к этому собеседнику может закрываться — setParameters
+          // выбросит InvalidStateError. Такого собеседника в этот такт пропускаем,
+          // остальные получают потолок как обычно.
+        }
       }
     }
   };

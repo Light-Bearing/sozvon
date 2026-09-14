@@ -152,6 +152,31 @@ describe('устойчивость такта к сбоям', () => {
 
     await room.leave();
   });
+
+  it('сбой setParameters() у одного отправителя не мешает обработать остальных', async () => {
+    const connection = fakeConnection();
+
+    const badSender = fakeSender();
+    badSender.setParameters = vi.fn().mockRejectedValue(new Error('InvalidStateError'));
+    const badPeer = fakePeer([badSender]);
+    connection.setPeer('плохой', badPeer);
+
+    const goodSender = fakeSender();
+    const goodPeer = fakePeer([goodSender]);
+    connection.setPeer('хороший', goodPeer);
+
+    const {room} = await openRoom({connection, ladder: createLadder()});
+
+    connection.handlers.onPeerJoin('плохой');
+    connection.handlers.onPeerJoin('хороший');
+
+    await vi.advanceTimersByTimeAsync(STATS_EVERY_MS);
+
+    // Несмотря на сбой у плохого собеседника, хороший получил потолок
+    expect(goodSender.setParameters).toHaveBeenCalled();
+
+    await room.leave();
+  });
 });
 
 describe('перенастройка камеры', () => {
