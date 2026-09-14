@@ -14,6 +14,7 @@
       #link { flex: 1; font-size: 1rem; padding: .5rem; }
       .controls { display: flex; gap: .5rem; }
       button { font-size: 1rem; padding: .6rem 1rem; cursor: pointer; }
+      .quiet { color: #666; font-size: .9rem; }
     </style>
   </head>
   <body>
@@ -22,6 +23,13 @@
         <h1>Созвон</h1>
         <p>Разговор напрямую, без регистрации.</p>
         <button id="start">Позвонить</button>
+      </section>
+
+      <section id="screen-join" hidden>
+        <h1>Вас зовут поговорить</h1>
+        <p>Ничего устанавливать не нужно, регистрация не требуется.</p>
+        <button id="join">Войти в разговор</button>
+        <p class="quiet">После нажатия браузер спросит разрешение на камеру и микрофон.</p>
       </section>
 
       <section id="screen-call" hidden>
@@ -36,6 +44,12 @@
           <button id="cam">Камера</button>
           <button id="hangup">Положить трубку</button>
         </div>
+      </section>
+
+      <section id="screen-failed" hidden>
+        <h1 id="failed-title"></h1>
+        <p id="failed-advice"></p>
+        <button id="retry">Попробовать снова</button>
       </section>
     </main>
     <script type="module" src="/src/main.js"></script>
