@@ -17,6 +17,11 @@ let micOn = true;
 let camOn = true;
 
 const enter = async secret => {
+  // Сбрасываем на каждый новый звонок: иначе состояние переживает предыдущий
+  // разговор, и первое нажатие «Микрофон»/«Камера» может тайно переключить
+  // устаревшее false → true вместо настоящего выключения.
+  micOn = true;
+  camOn = true;
   location.hash = secret;
   show('call');
   room = await createRoom({
