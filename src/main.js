@@ -9,6 +9,13 @@ let room = null;
 let micOn = true;
 let camOn = true;
 
+// Роль узнаём один раз, при загрузке страницы, — до того, как enter()
+// что-нибудь запишет в адрес. Дальше решаем по этому значению, а не по
+// текущему адресу: после неудачной попытки хозяина в хвосте на мгновение
+// остаётся секрет, который по виду не отличить от чужого приглашения
+// (та же длина, тот же алфавит).
+const invited = linkToSecret(location.href);
+
 const fail = error => {
   const {title, advice} = explainFailure(error);
   app.querySelector('#failed-title').textContent = title;
@@ -45,11 +52,17 @@ const enter = async secret => {
 };
 
 app.querySelector('#start').onclick = () => void enter(generateSecret());
-app.querySelector('#retry').onclick = () => location.reload();
+app.querySelector('#retry').onclick = () => {
+  // Гостю хвост адреса трогать нельзя — это и есть его приглашение: если
+  // стереть, после перезагрузки будет неоткуда собрать экран приглашения
+  // заново. Хозяину, наоборот, нужно стереть — то, что осталось в хвосте,
+  // это след его собственной неудачной попытки, а не чьё-то приглашение.
+  if (!invited) location.hash = '';
+  location.reload();
+};
 
 // Гость видит, кто зовёт, и жмёт кнопку. Камеру браузер спросит только
 // после нажатия — если спросить при загрузке, половина людей уходит.
-const invited = linkToSecret(location.href);
 if (invited) {
   app.querySelector('#join').onclick = () => void enter(invited);
   showScreen(app, 'join');
