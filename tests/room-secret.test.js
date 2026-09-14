@@ -45,4 +45,10 @@ describe('секрет комнаты', () => {
     expect(linkToSecret('https://light-bearing.github.io/sozvon/')).toBeNull();
     expect(linkToSecret('https://light-bearing.github.io/sozvon/#коротко')).toBeNull();
   });
+
+  it('негодный вход даёт null без исключения', () => {
+    expect(linkToSecret('не-ссылка')).toBeNull();
+    expect(linkToSecret('')).toBeNull();
+    expect(linkToSecret('#хвост')).toBeNull();
+  });
 });

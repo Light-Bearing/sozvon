@@ -28,6 +28,10 @@ export const secretToLink = (secret, base) =>
   `${base ?? location.origin + location.pathname}#${secret}`;
 
 export const linkToSecret = href => {
-  const hash = new URL(href).hash.slice(1);
-  return /^[A-Za-z0-9_-]{22}$/.test(hash) ? hash : null;
+  try {
+    const hash = new URL(href).hash.slice(1);
+    return /^[A-Za-z0-9_-]{22}$/.test(hash) ? hash : null;
+  } catch {
+    return null;
+  }
 };
