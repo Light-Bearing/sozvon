@@ -4,9 +4,40 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Созвон</title>
+    <style>
+      body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 1rem; }
+      #tiles { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+      .tile { position: relative; background: #111; border-radius: .5rem; overflow: hidden; }
+      .tile video { width: 100%; display: block; aspect-ratio: 16/9; object-fit: cover; }
+      .tile-name { position: absolute; left: .5rem; bottom: .5rem; color: #fff; }
+      .link-row { display: flex; gap: .5rem; margin: .75rem 0; }
+      #link { flex: 1; font-size: 1rem; padding: .5rem; }
+      .controls { display: flex; gap: .5rem; }
+      button { font-size: 1rem; padding: .6rem 1rem; cursor: pointer; }
+    </style>
   </head>
   <body>
-    <main id="app"></main>
+    <main id="app">
+      <section id="screen-start">
+        <h1>Созвон</h1>
+        <p>Разговор напрямую, без регистрации.</p>
+        <button id="start">Позвонить</button>
+      </section>
+
+      <section id="screen-call" hidden>
+        <div id="tiles"></div>
+        <p id="waiting">Жду, когда зайдут. Отправьте ссылку:</p>
+        <div class="link-row">
+          <input id="link" readonly />
+          <button id="copy">Скопировать</button>
+        </div>
+        <div class="controls">
+          <button id="mic">Микрофон</button>
+          <button id="cam">Камера</button>
+          <button id="hangup">Положить трубку</button>
+        </div>
+      </section>
+    </main>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
