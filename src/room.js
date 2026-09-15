@@ -179,16 +179,24 @@ export const createRoom = async ({
   const stats = createStatsTracker();
 
   const tick = async () => {
-    const reports = [];
-    for (const pc of Object.values(connection.getPeers())) {
+    // Группируем по собеседнику, а не сваливаем в один список: report.id
+    // устойчив только внутри одного соединения и у разных собеседников
+    // свободно совпадает — createStatsTracker в src/stats.js ключует
+    // снимки парой (собеседник, report.id) именно поэтому.
+    const peerReports = [];
+    for (const [peerId, pc] of Object.entries(connection.getPeers())) {
       try {
+        const reports = [];
         (await pc.getStats()).forEach(report => reports.push(report));
+        peerReports.push({peerId, reports});
       } catch {
         // Один собеседник в плохом состоянии не должен останавливать такт
-        // для всех остальных — просто пропускаем его в этот раз.
+        // для всех остальных — просто пропускаем его в этот раз. Раз его не
+        // было в этот такт, трекер сам забудет его прошлые снимки (см.
+        // src/stats.js) — досчитывать через пропуск не придётся.
       }
     }
-    const {loss, queueSeconds} = stats.summarize(reports);
+    const {loss, queueSeconds} = stats.summarize(peerReports);
     await applyStep(ladder.update({peerCount: peers.size + 1, loss, queueSeconds}));
   };
 

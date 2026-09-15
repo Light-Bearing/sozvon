@@ -9,43 +9,78 @@
 // самочувствия перестаёт срабатывать. Поэтому здесь не чистая функция, а
 // трекер с памятью: на каждом вызове берём разницу с прошлым снимком того
 // же источника — вот это и есть задержка «прямо сейчас».
-export const createStatsTracker = () => {
-  // Прошлый снимок (delay, sent) по каждому источнику. report.id устойчив
-  // для одного и того же потока на всё время жизни соединения — это и есть
-  // «источник» из задачи.
-  const previous = new Map();
+//
+// summarize() принимает отчёты, сгруппированные по собеседнику —
+// [{peerId, reports}, ...], а не единым плоским списком. report.id
+// устойчив для одного и того же потока на всё время жизни ОДНОГО
+// соединения, но не более того: у разных собеседников он свободно
+// совпадает (браузеры нумеруют предсказуемо, и первый видео-отправитель
+// почти всегда получает один и тот же id). Плоский список путал снимок
+// одного собеседника со снимком другого, снятым в тот же миг, — разница
+// превращалась в выдуманную задержку очереди, которая могла перевалить
+// порог лестницы и без всякой причины увести качество вниз. Вдвоём совпасть
+// нечему, поэтому и не поймали. Ключ теперь — пара (собеседник, report.id).
 
-  const summarize = reports => {
+// Сколько времени снимок ещё в силе, а не хлам. Собеседник, который на
+// время выпал из такта (сбой getStats(), сам источник примолк), возвращаясь
+// не должен быть сосчитан через весь провал: 60 секунд накопленной задержки
+// всего на два пакета дают многосекундную выдумку вместо честного нуля.
+// Запас в несколько раз больше обычного такта (STATS_EVERY_MS в
+// src/room.js — 2 с) — чтобы обычное дрожание таймера не отбрасывало
+// честные снимки попусту.
+export const MAX_SNAPSHOT_AGE_MS = 10_000;
+
+export const createStatsTracker = ({now = () => Date.now(), maxAgeMs = MAX_SNAPSHOT_AGE_MS} = {}) => {
+  // peerId -> (report.id -> {delay, sent, at}). Пересобирается на каждом
+  // summarize() заново (см. ниже) — так собеседник или источник, не
+  // встретившийся в этот такт, сам по себе выпадает из памяти вместо того,
+  // чтобы копиться там без ограничения по давности.
+  let previous = new Map();
+
+  const summarize = peerReports => {
     let loss = 0;
     let queueSeconds = 0;
+    const t = now();
+    const next = new Map();
 
-    for (const report of reports) {
-      if (report.type === 'remote-inbound-rtp' && typeof report.fractionLost === 'number') {
-        loss = Math.max(loss, report.fractionLost);
-      }
+    for (const {peerId, reports} of peerReports) {
+      const priorBySource = previous.get(peerId);
+      const nextBySource = new Map();
+      next.set(peerId, nextBySource);
 
-      if (report.type === 'outbound-rtp' && typeof report.packetsSent === 'number') {
-        const delay = report.totalPacketSendDelay ?? 0;
-        const sent = report.packetsSent;
-        const prior = previous.get(report.id);
-        previous.set(report.id, {delay, sent});
+      for (const report of reports) {
+        if (report.type === 'remote-inbound-rtp' && typeof report.fractionLost === 'number') {
+          loss = Math.max(loss, report.fractionLost);
+        }
 
-        // Первый снимок этого источника — сравнивать не с чем: если отдать
-        // здесь всю накопленную с начала звонка историю, это и есть та же
-        // самая ошибка, которую чиним. Счётчики могут и обнулиться (например,
-        // после переустановки ICE) — тогда sent окажется меньше прежнего,
-        // и разница вместо задержки станет отрицательным мусором. В обоих
-        // случаях просто запоминаем новую точку отсчёта и ничего не считаем
-        // в этот раз.
-        if (prior && sent >= prior.sent) {
-          const deltaPackets = sent - prior.sent;
-          const deltaDelay = delay - prior.delay;
-          if (deltaPackets > 0) {
-            queueSeconds = Math.max(queueSeconds, deltaDelay / deltaPackets);
+        if (report.type === 'outbound-rtp' && typeof report.packetsSent === 'number') {
+          const delay = report.totalPacketSendDelay ?? 0;
+          const sent = report.packetsSent;
+          const prior = priorBySource?.get(report.id);
+          nextBySource.set(report.id, {delay, sent, at: t});
+
+          // Первый снимок этого источника (в том числе — первый после
+          // возвращения, раз прошлый такт его не встретил и не пронёс
+          // сюда) — сравнивать не с чем: если отдать здесь всю накопленную
+          // историю, это и есть та же самая ошибка, которую чиним. Снимок
+          // старше maxAgeMs — та же история, только через провал, а не с
+          // нуля. Счётчики могут и обнулиться (например, после
+          // переустановки ICE) — тогда sent окажется меньше прежнего, и
+          // разница вместо задержки станет отрицательным мусором. Во всех
+          // трёх случаях просто запоминаем новую точку отсчёта и ничего не
+          // считаем в этот раз.
+          if (prior && t - prior.at <= maxAgeMs && sent >= prior.sent) {
+            const deltaPackets = sent - prior.sent;
+            const deltaDelay = delay - prior.delay;
+            if (deltaPackets > 0) {
+              queueSeconds = Math.max(queueSeconds, deltaDelay / deltaPackets);
+            }
           }
         }
       }
     }
+
+    previous = next;
 
     return {loss, queueSeconds};
   };
