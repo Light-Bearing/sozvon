@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {describe, expect, it, vi} from 'vitest';
 import {renderCall} from '../src/ui/call.js';
+import {explainTrouble} from '../src/ui/screens.js';
 import {STEPS} from '../src/ladder.js';
 
 // Разметку берём из настоящего index.html, а не переписываем от руки:
@@ -132,8 +133,11 @@ describe('беда со связью названа на экране', () => {
     expect(el.querySelector('#trouble').hidden).toBe(false);
     expect(el.querySelector('#waiting').hidden).toBe(true);
     expect(el.querySelector('#quiet').hidden).toBe(true);
-    expect(el.querySelector('#trouble-title').textContent).toContain('канал к нему');
-    expect(el.querySelector('#trouble-advice').textContent).toContain('раздача интернета');
+    // Сам текст проверяется там, где он живёт (tests/screens.test.js);
+    // здесь — только что на экран попал именно он, а не что-то своё.
+    const {title, advice} = explainTrouble('no-path');
+    expect(el.querySelector('#trouble-title').textContent).toBe(title);
+    expect(el.querySelector('#trouble-advice').textContent).toBe(advice);
   });
 
   it('карточка со ссылкой возвращается, даже когда собеседники уже есть', () => {
