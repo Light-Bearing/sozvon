@@ -88,5 +88,7 @@ if (invited) {
 // первой отрисовки. Сам обработчик — в public/sw.js: сначала сеть, кэш
 // только когда сети нет.
 if ('serviceWorker' in navigator) {
-  addEventListener('load', () => void navigator.serviceWorker.register('./sw.js'));
+  addEventListener('load', () => {
+    void navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
 }
