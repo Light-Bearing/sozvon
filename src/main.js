@@ -4,6 +4,7 @@ import {familiesFor, parseFamilyNames} from './signal/public-channels.js';
 import {renderCall} from './ui/call.js';
 import {explainFailure, showScreen} from './ui/screens.js';
 import {renderDiagnostics} from './ui/diagnostics.js';
+import {bindHotkeys} from './ui/hotkeys.js';
 
 const app = document.querySelector('#app');
 
@@ -58,6 +59,13 @@ const enter = async secret => {
     fail(error);
   }
 };
+
+// Пробел — быстрый выключатель микрофона. Работает только на экране
+// звонка и только когда там есть чем управлять.
+bindHotkeys(document, {
+  isReady: () => Boolean(room) && !app.querySelector('#screen-call').hidden,
+  toggleMicrophone: () => room.setMicrophone(!room.state().mic),
+});
 
 app.querySelector('#start').onclick = () => void enter(generateSecret());
 app.querySelector('#retry').onclick = () => {
