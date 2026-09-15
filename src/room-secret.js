@@ -24,8 +24,12 @@ export const deriveRoomId = async secret =>
 // Ключ, которым Trystero шифрует рукопожатие. Наружу не попадает никогда.
 export const derivePassword = async secret => toBase64Url(await digest(secret, ':key'));
 
+// Берём адрес до решётки из самого location.href, а не собираем его из
+// origin и pathname по кускам: у адресов file:// (открыли собранный в один
+// файл HTML прямо с диска) Chrome отдаёт location.origin как строку "null",
+// и склейка получалась битой — "null/Users/.../index.html#…".
 export const secretToLink = (secret, base) =>
-  `${base ?? location.origin + location.pathname}#${secret}`;
+  `${base ?? location.href.split('#')[0]}#${secret}`;
 
 export const linkToSecret = href => {
   try {

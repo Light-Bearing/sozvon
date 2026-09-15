@@ -41,6 +41,28 @@ describe('секрет комнаты', () => {
     expect(linkToSecret(link)).toBe(secret);
   });
 
+  // Находка 7: сборка в один файл открывается с диска (file://), а в Chrome
+  // location.origin для таких адресов — буквально строка "null". Склейка
+  // "null" + location.pathname давала битую ссылку вида
+  // "null/Users/.../index.html#…" — ровно то, что README предлагает
+  // попробовать.
+  it('на file:// (Chrome отдаёт location.origin как строку "null") ссылка не начинается с "null"', () => {
+    const previous = globalThis.location;
+    globalThis.location = {
+      origin: 'null',
+      pathname: '/Users/kто-то/sozvon/index.html',
+      href: 'file:///Users/kто-то/sozvon/index.html',
+    };
+    try {
+      const secret = generateSecret();
+      const link = secretToLink(secret);
+      expect(link).toBe(`file:///Users/kто-то/sozvon/index.html#${secret}`);
+      expect(link.startsWith('null')).toBe(false);
+    } finally {
+      globalThis.location = previous;
+    }
+  });
+
   it('ссылка без секрета и с мусором даёт null', () => {
     expect(linkToSecret('https://light-bearing.github.io/sozvon/')).toBeNull();
     expect(linkToSecret('https://light-bearing.github.io/sozvon/#коротко')).toBeNull();
