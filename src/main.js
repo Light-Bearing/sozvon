@@ -83,3 +83,10 @@ if (invited) {
 } else {
   showScreen(app, 'start');
 }
+
+// Регистрируем после загрузки страницы, чтобы не отвлекать браузер от
+// первой отрисовки. Сам обработчик — в public/sw.js: сначала сеть, кэш
+// только когда сети нет.
+if ('serviceWorker' in navigator) {
+  addEventListener('load', () => void navigator.serviceWorker.register('./sw.js'));
+}

@@ -9,7 +9,8 @@
   "scripts": {
     "test": "vitest run",
     "dev": "vite --host",
-    "build": "vite build"
+    "build": "vite build",
+    "build:single": "vite build --config vite.config.single.js"
   },
   "keywords": [],
   "author": "",

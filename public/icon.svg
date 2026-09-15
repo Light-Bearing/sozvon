@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Гардеробный номерок: латунная жестянка с дыркой для крючка на тёмном фоне. -->
+  <rect width="512" height="512" fill="#111815"/>
+  <rect x="144" y="106" width="224" height="300" rx="36" fill="#c9a24a" stroke="#7e6227" stroke-width="6"/>
+  <circle cx="256" cy="156" r="32" fill="#111815"/>
+</svg>

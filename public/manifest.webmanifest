@@ -1,0 +1,13 @@
+{
+  "name": "Созвон",
+  "short_name": "Созвон",
+  "description": "Разговор напрямую, без регистрации",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#111815",
+  "theme_color": "#111815",
+  "icons": [
+    {"src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
+}
