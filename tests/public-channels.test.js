@@ -1,5 +1,6 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {joinPublicChannels} from '../src/signal/public-channels.js';
+import {relayUrlsFor} from '../src/signal/relays.js';
 
 const FAMILY_NAMES = ['torrent', 'nostr', 'mqtt'];
 
@@ -47,6 +48,10 @@ const createFakeRoom = () => {
   return {
     room,
     addStreamCalls,
+    // Поддельные сокеты релеев этого семейства — {url: {readyState}}.
+    // Пустой объект по умолчанию: ни один адрес не открыт, семейство мертво,
+    // пока тест явно не откроет сокет через sockets.
+    sockets: {},
     action: namespace => room.makeAction(namespace),
     join: peerId => {
       peers.set(peerId, {peerId});
@@ -70,6 +75,9 @@ describe('публичные каналы: адресная доставка', (
     const families = FAMILY_NAMES.map(family => ({
       family,
       join: () => fakes[family].room,
+      // Читает fakes[family].sockets заново при каждом вызове — тест может
+      // поменять его после того, как connection уже создан.
+      getRelaySockets: () => fakes[family].sockets,
     }));
     handlers = {
       onPeerJoin: vi.fn(),
@@ -204,6 +212,41 @@ describe('публичные каналы: адресная доставка', (
 
       expect(handlers.onPeerStream).toHaveBeenCalledTimes(1);
       expect(handlers.onPeerStream).toHaveBeenCalledWith(stream2, 'петя');
+    });
+  });
+
+  // Находка 5: раньше status() просто отдавал настроенный список адресов —
+  // он ничего не говорил о том, жив ли канал прямо сейчас, и его никто не
+  // читал. Теперь он честно смотрит на readyState сокетов из getRelaySockets().
+  describe('status(): какие каналы живы прямо сейчас', () => {
+    it('семейство без единого открытого сокета живым не считается', () => {
+      const torrent = connection.status().find(c => c.family === 'torrent');
+      expect(torrent.alive).toBe(false);
+      expect(torrent.aliveCount).toBe(0);
+    });
+
+    it('семейство с открытым (readyState: OPEN) сокетом на своём адресе считается живым', () => {
+      const url = relayUrlsFor('torrent')[0];
+      fakes.torrent.sockets = {[url]: {readyState: 1}};
+
+      const torrent = connection.status().find(c => c.family === 'torrent');
+      expect(torrent.alive).toBe(true);
+      expect(torrent.aliveCount).toBe(1);
+
+      // Соседние семейства эта правка не задевает.
+      expect(connection.status().find(c => c.family === 'nostr').alive).toBe(false);
+    });
+
+    it('сокет ещё подключается (readyState CONNECTING, не OPEN) — живым не считается', () => {
+      const url = relayUrlsFor('torrent')[0];
+      fakes.torrent.sockets = {[url]: {readyState: 0}};
+
+      expect(connection.status().find(c => c.family === 'torrent').alive).toBe(false);
+    });
+
+    it('relays в ответе — это адреса именно этого семейства, из relayUrlsFor', () => {
+      const torrent = connection.status().find(c => c.family === 'torrent');
+      expect(torrent.relays).toEqual(relayUrlsFor('torrent'));
     });
   });
 });

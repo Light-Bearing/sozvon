@@ -1,15 +1,20 @@
-import {joinRoom as joinTorrent} from '@trystero-p2p/torrent';
-import {joinRoom as joinNostr} from '@trystero-p2p/nostr';
-import {joinRoom as joinMqtt} from '@trystero-p2p/mqtt';
+import {joinRoom as joinTorrent, getRelaySockets as torrentSockets} from '@trystero-p2p/torrent';
+import {joinRoom as joinNostr, getRelaySockets as nostrSockets} from '@trystero-p2p/nostr';
+import {joinRoom as joinMqtt, getRelaySockets as mqttSockets} from '@trystero-p2p/mqtt';
 import {createPeerRegistry} from './dedupe.js';
 import {relayUrlsFor} from './relays.js';
 
 export const APP_ID = 'sozvon';
 
+// Числовое значение WebSocket.OPEN — берём его как литерал, а не через
+// глобальный WebSocket, чтобы status() не зависел от окружения (в тестах
+// глобального WebSocket может не быть вовсе).
+const SOCKET_OPEN = 1;
+
 const FAMILIES = [
-  {family: 'torrent', join: joinTorrent},
-  {family: 'nostr', join: joinNostr},
-  {family: 'mqtt', join: joinMqtt},
+  {family: 'torrent', join: joinTorrent, getRelaySockets: torrentSockets},
+  {family: 'nostr', join: joinNostr, getRelaySockets: nostrSockets},
+  {family: 'mqtt', join: joinMqtt, getRelaySockets: mqttSockets},
 ];
 
 // families — необязательный параметр только для тестов: подсовывает
@@ -28,7 +33,7 @@ export const joinPublicChannels = ({roomId, password, handlers, families = FAMIL
   // владелец (см. «призрак» в onPeerLeave).
   let localStream = null;
 
-  const channels = families.map(({family, join}) => {
+  const channels = families.map(({family, join, getRelaySockets = () => ({})}) => {
     const relays = relayUrlsFor(family);
     const room = join(
       {appId: APP_ID, password, relayConfig: {urls: relays}},
@@ -65,7 +70,7 @@ export const joinPublicChannels = ({roomId, password, handlers, families = FAMIL
       handlers.onPeerStream?.(stream, peerId);
     };
 
-    return {family, relays, room};
+    return {family, relays, room, getRelaySockets};
   });
 
   const roomOf = family => channels.find(c => c.family === family).room;
@@ -126,7 +131,17 @@ export const joinPublicChannels = ({roomId, password, handlers, families = FAMIL
         },
       };
     },
-    status: () => channels.map(({family, relays}) => ({family, relays})),
+    // Живость семейства — по сокетам его собственных адресов из relays, а
+    // не по одному только факту, что список адресов настроен: настроенный
+    // адрес ничего не говорит о том, отвечает ли он сейчас. getRelaySockets()
+    // библиотека отдаёт как {url: WebSocket} — считаем семейство живым, если
+    // хоть один из НАШИХ адресов сейчас в состоянии OPEN.
+    status: () =>
+      channels.map(({family, relays, getRelaySockets}) => {
+        const sockets = getRelaySockets();
+        const aliveCount = relays.filter(url => sockets[url]?.readyState === SOCKET_OPEN).length;
+        return {family, relays, aliveCount, alive: aliveCount > 0};
+      }),
     leave: () => Promise.all(everyRoom(room => room.leave())),
   };
 };
