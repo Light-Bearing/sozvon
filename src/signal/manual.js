@@ -40,8 +40,12 @@ export const unpack = async code => {
   return {type: t, sdp: s};
 };
 
+// Адрес страницы берём целиком и отрезаем хвост, а не собираем из origin и
+// pathname по кускам: у адресов file:// (открыли собранный в один файл HTML
+// прямо с диска) Chrome отдаёт location.origin как строку "null", и склейка
+// получалась битой — "null/Users/.../index.html#…".
 export const manualLink = (code, base) =>
-  `${base ?? location.origin + location.pathname}#${MANUAL_PREFIX}${code}`;
+  `${base ?? location.href.split('#')[0]}#${MANUAL_PREFIX}${code}`;
 
 export const codeFromLink = href => {
   const hash = new URL(href).hash.slice(1);

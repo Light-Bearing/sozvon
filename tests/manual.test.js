@@ -37,6 +37,27 @@ describe('ссылка ручного обмена', () => {
     expect(codeFromLink(link)).toBe(code);
   });
 
+  // Та же беда, что была у secretToLink: сборка в один файл открывается с
+  // диска (file://), а в Chrome location.origin для таких адресов — буквально
+  // строка "null". Склейка "null" + location.pathname давала битую ссылку.
+  it('на file:// (Chrome отдаёт location.origin как строку "null") ссылка не начинается с "null"', async () => {
+    const previous = globalThis.location;
+    globalThis.location = {
+      origin: 'null',
+      pathname: '/Users/some-one/sozvon/index.html',
+      href: 'file:///Users/some-one/sozvon/index.html',
+    };
+    try {
+      const code = await pack(sampleSdp);
+      const link = manualLink(code);
+      expect(link).toBe(`file:///Users/some-one/sozvon/index.html#m.${code}`);
+      expect(link.startsWith('null')).toBe(false);
+      expect(codeFromLink(link)).toBe(code);
+    } finally {
+      globalThis.location = previous;
+    }
+  });
+
   it('обычная ссылка кодом не притворяется', () => {
     expect(codeFromLink('https://light-bearing.github.io/sozvon/#K7mQ2xAbCdEfGhIjKl')).toBeNull();
     expect(codeFromLink('https://light-bearing.github.io/sozvon/')).toBeNull();
