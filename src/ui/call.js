@@ -8,11 +8,12 @@
 // картинки плитка темнеет и показывает инициал (см. hasPicture() ниже и
 // .tile--dark в style.css), а фон остаётся своим спокойным градиентом.
 
+import {playThrough} from '../devices.js';
 import {explainTrouble} from './screens.js';
 
 const hasPicture = stream => stream?.getVideoTracks().some(track => track.enabled);
 
-const tile = (id, stream, label, isSelf) => {
+const tile = (id, stream, label, isSelf, speaker) => {
   const box = document.createElement('div');
   box.className = isSelf ? 'tile tile--self' : 'tile';
   box.dataset.peer = id;
@@ -28,6 +29,9 @@ const tile = (id, stream, label, isSelf) => {
   // Себя слушать не надо — иначе эхо и вой.
   video.muted = isSelf;
   if (stream) video.srcObject = stream;
+  // Вывод звука выбирается у проигрывателя, а не у потока, и умеют это не
+  // все браузеры — playThrough честно ничего не делает там, где нельзя.
+  if (!isSelf) void playThrough(video, speaker);
 
   const name = document.createElement('span');
   name.className = 'tile-name';
@@ -37,8 +41,10 @@ const tile = (id, stream, label, isSelf) => {
   return box;
 };
 
-const nameFor = (index, total) =>
-  total > 1 ? `Собеседник ${index + 1}` : 'Собеседник';
+// Собеседник назвался — зовём как просил. Не назвался (имя ещё не дошло
+// или канал обмена недоступен) — по порядку, как раньше.
+const nameFor = (name, index, total) =>
+  name ?? (total > 1 ? `Собеседник ${index + 1}` : 'Собеседник');
 
 // Кнопка ничего не помнит сама: её вид выставляется из состояния комнаты
 // на каждой перерисовке, а клик только просит комнату переключить
@@ -79,9 +85,11 @@ export const renderCall = (container, state, actions) => {
   if (backdrop.srcObject !== backdropSource) backdrop.srcObject = backdropSource;
 
   container.querySelector('#tiles').replaceChildren(
-    tile('self', state.self, 'Вы', true),
-    ...state.peers.map(({peerId, stream}, i) =>
-      tile(peerId, stream, nameFor(i, state.peers.length), false),
+    // На своей плитке — своё имя, а не «Вы»: это ровно то, что видят
+    // остальные, и другого места проверить его нет.
+    tile('self', state.self, state.name ?? 'Вы', true, state.speaker),
+    ...state.peers.map(({peerId, stream, name}, i) =>
+      tile(peerId, stream, nameFor(name, i, state.peers.length), false, state.speaker),
     ),
   );
 

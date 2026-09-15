@@ -40,6 +40,10 @@
         <path d="M15 6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15" />
       </symbol>
       <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7" /></symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3.2" />
+        <path d="M12 2.8v2.4m0 13.6v2.4M21.2 12h-2.4M5.2 12H2.8m15.5-6.3-1.7 1.7M7 17l-1.7 1.7m12.6 0L16.2 17M7 7 5.3 5.3" />
+      </symbol>
     </svg>
 
     <main id="app">
@@ -52,6 +56,11 @@
             Аккаунт не нужен никому. Камера и микрофон выключены, пока вы сами
             их не включите — уже внутри разговора.
           </p>
+          <label class="field field--solo">
+            <span class="field-label">Как вас звать</span>
+            <input class="field-input" type="text" maxlength="24" autocomplete="off"
+                   spellcheck="false" data-name />
+          </label>
           <button id="start" class="act act--primary" type="button">Позвонить</button>
         </div>
         <footer class="pane-foot">
@@ -69,6 +78,11 @@
             можно молча — камеру и микрофон вы включите сами, отдельной
             кнопкой, уже внутри разговора.
           </p>
+          <label class="field field--solo">
+            <span class="field-label">Как вас звать</span>
+            <input class="field-input" type="text" maxlength="24" autocomplete="off"
+                   spellcheck="false" data-name />
+          </label>
           <button id="join" class="act act--primary" type="button">Войти в разговор</button>
         </div>
         <footer class="pane-foot">
@@ -100,6 +114,40 @@
 
         <div id="tiles" class="tiles"></div>
 
+        <div id="settings" class="sheet" hidden>
+          <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <p class="sheet-title" id="settings-title">Настройки</p>
+
+            <label class="field">
+              <span class="field-label">Как вас звать</span>
+              <input id="name-input" class="field-input" type="text" maxlength="24"
+                     autocomplete="off" spellcheck="false" />
+            </label>
+
+            <label class="field" id="field-microphone">
+              <span class="field-label">Микрофон</span>
+              <select id="pick-microphone" class="field-input"></select>
+            </label>
+
+            <label class="field" id="field-camera">
+              <span class="field-label">Камера</span>
+              <select id="pick-camera" class="field-input"></select>
+            </label>
+
+            <label class="field" id="field-speaker">
+              <span class="field-label">Звук идёт в</span>
+              <select id="pick-speaker" class="field-input"></select>
+            </label>
+
+            <p class="sheet-note" id="settings-note" hidden>
+              Названия устройств браузер покажет, когда вы включите микрофон
+              или камеру.
+            </p>
+
+            <button id="settings-close" class="act act--primary" type="button">Готово</button>
+          </div>
+        </div>
+
         <div class="dock">
           <button id="mic" class="ctl" type="button" aria-pressed="true"
                   aria-label="Микрофон" aria-keyshortcuts="Space" title="Микрофон — пробел">
@@ -109,6 +157,9 @@
           <button id="cam" class="ctl" type="button" aria-pressed="true" aria-label="Камера">
             <svg class="i i-on"><use href="#i-cam" /></svg>
             <svg class="i i-off"><use href="#i-cam-off" /></svg>
+          </button>
+          <button id="settings-open" class="ctl" type="button" aria-label="Настройки">
+            <svg class="i"><use href="#i-gear" /></svg>
           </button>
           <button data-copy class="ctl ctl--copy" type="button" aria-label="Скопировать ссылку" hidden>
             <svg class="i i-idle"><use href="#i-copy" /></svg>

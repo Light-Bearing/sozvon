@@ -7,6 +7,7 @@ import {connect} from './signal/index.js';
 import {secretToLink} from './room-secret.js';
 import {createStatsTracker} from './stats.js';
 import {createSpeakingTracker, levelFrom} from './speaking.js';
+import {makeName, trimName} from './names.js';
 
 const STATS_EVERY_MS = 2_000;
 
@@ -17,8 +18,13 @@ export const createRoom = async ({
   media = createMedia(),
   ladder = createLadder(),
   families,
+  name,
 }) => {
   const peers = new Map();
+  // Своё имя и имена собеседников. Своё — то, что дали снаружи (main.js
+  // помнит его между звонками), либо смешное, придуманное на месте.
+  let myName = trimName(name) ?? makeName();
+  const names = new Map();
   let step = stepForPeers(1);
 
   // Намерение человека — и только человека: меняется исключительно из
@@ -56,10 +62,20 @@ export const createRoom = async ({
     self: media.current(),
     mic: microphoneWanted,
     cam: cameraWanted,
-    peers: [...peers.entries()].map(([peerId, stream]) => ({peerId, stream})),
+    name: myName,
+    devices: media.chosen?.() ?? {microphone: null, camera: null},
+    peers: [...peers.entries()].map(([peerId, stream]) => ({
+      peerId,
+      stream,
+      name: names.get(peerId) ?? null,
+    })),
   });
 
   const announce = () => onChange(state());
+
+  // Канал имён появится ниже, когда будет само подключение, — а нужен он
+  // уже в обработчике onPeerJoin, который пишется выше него.
+  let namesChannel = null;
 
   // Ничего не захватываем: вход в разговор молчаливый. connectFn() поднимет
   // соединение без единой исходящей дорожки — оно прекрасно принимает
@@ -84,10 +100,14 @@ export const createRoom = async ({
         },
         onPeerJoin: peerId => {
           peers.set(peerId, null);
+          // Вошедший ещё не знает, как нас зовут: посылать имя при входе
+          // должен тот, кто уже внутри, — сам новичок о нас не спросит.
+          void namesChannel?.send(myName);
           announce();
         },
         onPeerLeave: peerId => {
           peers.delete(peerId);
+          names.delete(peerId);
           announce();
         },
         onPeerStream: (peerStream, peerId) => {
@@ -119,6 +139,18 @@ export const createRoom = async ({
   const levels = typeof connection.action === 'function' ? connection.action('level') : null;
   // Вторым аргументом приходит объект с полем peerId, а не сам идентификатор.
   if (levels) levels.onMessage = (level, {peerId}) => tracker.report(peerId, level);
+
+  namesChannel = typeof connection.action === 'function' ? connection.action('name') : null;
+  if (namesChannel) {
+    namesChannel.onMessage = (raw, {peerId}) => {
+      // Имя приходит от собеседника, поэтому чистится ровно так же, как
+      // своё: и в разметку оно попадает только текстом (см. src/ui/call.js).
+      const next = trimName(raw);
+      if (!next || names.get(peerId) === next) return;
+      names.set(peerId, next);
+      announce();
+    };
+  }
 
   // А вот измерение и рассылка СВОЕГО уровня возможны, только когда есть
   // живая дорожка микрофона, — включает их startMicrophone() ниже, а не
@@ -334,6 +366,42 @@ export const createRoom = async ({
       announce();
       return on ? startCamera() : undefined;
     },
+    // Имя можно менять не выходя из звонка. Пустым оно не бывает: имя, под
+    // которым человек согласился остаться, выбирает вызывающий (main.js
+    // держит для этого подсказку на весь сеанс), а makeName здесь — только
+    // страховка на случай, если не передали вообще ничего.
+    setName: next => {
+      const clean = trimName(next) ?? makeName();
+      if (clean === myName) return myName;
+      myName = clean;
+      void namesChannel?.send(myName);
+      announce();
+      return myName;
+    },
+
+    // Выбор устройства в настройках. Пока захвата нет, выбор просто
+    // запоминается (media.useMicrophone вернёт null) — и сработает, когда
+    // человек включит микрофон или камеру.
+    setMicrophoneDevice: async deviceId => {
+      const swap = await media.useMicrophone(deviceId, step);
+      if (swap) {
+        connection.replaceTrack(swap.old, swap.next);
+        // Анализатор уровня слушал остановленную дорожку — без этого
+        // собеседники перестали бы видеть, что человек говорит.
+        stopLevelMeter();
+        await startLevelMeter(media.current());
+      }
+      applyDesiredMedia();
+      announce();
+    },
+
+    setCameraDevice: async deviceId => {
+      const swap = await media.useCamera(deviceId, step);
+      if (swap) connection.replaceTrack(swap.old, swap.next);
+      applyDesiredMedia();
+      announce();
+    },
+
     leave: async () => {
       clearInterval(timer);
       stopLevelMeter();

@@ -12,12 +12,55 @@ export const constraintsFor = step => ({
         },
 });
 
+// Выбранное человеком устройство просим точно (exact), а не пожеланием:
+// «пожелание» браузер молча пропустит мимо ушей и отдаст прежнее, и
+// переключатель в настройках окажется украшением. Не выбрано ничего —
+// ограничение остаётся как было, и устройство выбирает браузер.
+export const withDevice = (constraint, deviceId) =>
+  deviceId && constraint ? {...constraint, deviceId: {exact: deviceId}} : constraint;
+
 export const createMedia = ({
   getUserMedia = constraints => navigator.mediaDevices.getUserMedia(constraints),
 } = {}) => {
   let stream = null;
 
+  // Что человек выбрал в настройках. Помним даже когда захвата ещё нет:
+  // выбор, сделанный до включения микрофона, должен дожить до включения.
+  const preferred = {audio: null, video: null};
+
+  // Заменяет живую дорожку на дорожку с другого устройства. Отдаёт пару
+  // (старая, новая) — вызывающему (room.js) нужно ещё переставить её на
+  // соединениях через replaceTrack, иначе собеседники продолжат слушать
+  // остановленную. Пока захвата нет, менять нечего: выбор запомнен, и
+  // ближайший captureMicrophone/captureCamera возьмёт уже нужное.
+  const swapTrack = async (kind, deviceId, constraint) => {
+    preferred[kind] = deviceId || null;
+    const tracks = kind === 'audio' ? stream?.getAudioTracks() : stream?.getVideoTracks();
+    const [old] = tracks ?? [];
+    if (!old) return null;
+
+    const captured = await getUserMedia(
+      kind === 'audio'
+        ? {audio: withDevice(constraint, preferred.audio), video: false}
+        : {audio: false, video: withDevice(constraint, preferred.video)},
+    );
+    const [next] = kind === 'audio' ? captured.getAudioTracks() : captured.getVideoTracks();
+    // Порядок важен: сначала забрать новую дорожку, потом гасить старую.
+    // Наоборот — и при отказе захвата человек остался бы вообще без звука.
+    old.stop();
+    stream.removeTrack(old);
+    stream.addTrack(next);
+    return {old, next};
+  };
+
   return {
+    // Выбор устройства из настроек. Возвращает пару дорожек для замены на
+    // соединениях либо null, если менять пока нечего.
+    useMicrophone: (deviceId, step) =>
+      swapTrack('audio', deviceId, constraintsFor(step).audio),
+    useCamera: (deviceId, step) => swapTrack('video', deviceId, constraintsFor(step).video),
+    chosen: () => ({microphone: preferred.audio, camera: preferred.video}),
+
     start: async step => {
       stream = await getUserMedia(constraintsFor(step));
       return stream;
@@ -62,7 +105,10 @@ export const createMedia = ({
     // дорожку и моргал бы устройством, которое и так работает.
     captureMicrophone: async step => {
       if (stream?.getAudioTracks().length) return null; // уже захвачен
-      const captured = await getUserMedia({audio: constraintsFor(step).audio, video: false});
+      const captured = await getUserMedia({
+        audio: withDevice(constraintsFor(step).audio, preferred.audio),
+        video: false,
+      });
       const [track] = captured.getAudioTracks();
       if (stream) stream.addTrack(track);
       else stream = captured;
@@ -76,7 +122,7 @@ export const createMedia = ({
       const video = constraintsFor(step).video;
       if (!video) return null;
       if (stream?.getVideoTracks().length) return null; // уже захвачена
-      const captured = await getUserMedia({audio: false, video});
+      const captured = await getUserMedia({audio: false, video: withDevice(video, preferred.video)});
       const [track] = captured.getVideoTracks();
       if (stream) stream.addTrack(track);
       else stream = captured;

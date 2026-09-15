@@ -5,10 +5,53 @@ import {renderCall} from './ui/call.js';
 import {explainFailure, showScreen} from './ui/screens.js';
 import {renderDiagnostics} from './ui/diagnostics.js';
 import {bindHotkeys} from './ui/hotkeys.js';
+import {createSettings} from './ui/settings.js';
+import {makeName, trimName} from './names.js';
+import {recall, remember} from './store.js';
 
 const app = document.querySelector('#app');
 
 let room = null;
+
+// Имя и выбранные устройства переживают звонок: перезаходить в разговор и
+// каждый раз называться заново — работа, которой быть не должно.
+//
+// Смешное имя — подсказка в пустом поле, а не вписанный в него текст:
+// вписанное пришлось бы сначала стирать, чтобы назваться по-своему, и
+// человек не отличил бы своё имя от придуманного за него. Пустое поле
+// значит «зовите как придумали», и ровно это в нём и написано.
+const HINT = makeName();
+let given = trimName(recall('имя'));
+let myName = given ?? HINT;
+const picked = {
+  microphone: recall('микрофон'),
+  camera: recall('камера'),
+  speaker: recall('звук'),
+};
+
+// Пустое поле — это отказ от своего имени, а не ошибка ввода: возвращаемся
+// к подсказке и забываем сохранённое.
+const saveName = next => {
+  given = trimName(next);
+  myName = given ?? HINT;
+  remember('имя', given);
+  return myName;
+};
+
+const paintNameFields = () => {
+  for (const input of app.querySelectorAll('[data-name]')) {
+    input.placeholder = HINT;
+    if (input.value !== (given ?? '')) input.value = given ?? '';
+  }
+};
+
+for (const input of app.querySelectorAll('[data-name]')) {
+  input.oninput = () => {
+    saveName(input.value);
+    room?.setName(myName);
+  };
+}
+paintNameFields();
 
 // Отладочный переключатель семейств каналов: ?каналы=nostr или
 // ?каналы=torrent,mqtt ограничивает список для опыта «а если оставить
@@ -24,6 +67,23 @@ const families = familiesFor(
 // остаётся секрет, который по виду не отличить от чужого приглашения
 // (та же длина, тот же алфавит).
 const invited = linkToSecret(location.href);
+
+// Одна точка отрисовки экрана звонка — ею пользуется и комната (на каждое
+// изменение), и настройки, когда меняется то, чем комната не распоряжается.
+// Вывод звука — как раз такое: он переключается у проигрывателя, а не у
+// потока, поэтому дописывается к состоянию здесь, а не живёт в room.js.
+const paint = state =>
+  renderCall(app.querySelector('#screen-call'), {...state, speaker: picked.speaker}, {
+    toggleMicrophone: () => room.setMicrophone(!state.mic),
+    toggleCamera: () => room.setCamera(!state.cam),
+    hangUp: async () => {
+      await room.leave();
+      room = null;
+      settings.close();
+      location.hash = '';
+      showScreen(app, 'start');
+    },
+  });
 
 const fail = error => {
   const {title, advice} = explainFailure(error);
@@ -43,22 +103,36 @@ const enter = async secret => {
       // заводит его заново на каждый звонок) и приходит сюда через state —
       // отдельной копии в main.js больше нет, поэтому её нечему рассогласовать
       // с разметкой и нечего забыть сбросить между звонками.
-      onChange: state =>
-        renderCall(app.querySelector('#screen-call'), state, {
-          toggleMicrophone: () => room.setMicrophone(!state.mic),
-          toggleCamera: () => room.setCamera(!state.cam),
-          hangUp: async () => {
-            await room.leave();
-            room = null;
-            location.hash = '';
-            showScreen(app, 'start');
-          },
-        }),
+      name: myName,
+      onChange: paint,
     });
   } catch (error) {
     fail(error);
   }
 };
+
+const settings = createSettings(app, {
+  // Что человек вписал сам (пусто — значит согласился на подсказку) и что
+  // будет написано, если он так ничего и не впишет.
+  currentName: () => given ?? '',
+  nameHint: () => HINT,
+  currentDevices: () => picked,
+  setName: next => {
+    room?.setName(saveName(next));
+    paintNameFields();
+  },
+  setDevice: (kind, deviceId) => {
+    picked[kind] = deviceId;
+    remember({microphone: 'микрофон', camera: 'камера', speaker: 'звук'}[kind], deviceId);
+    if (kind === 'microphone') void room?.setMicrophoneDevice(deviceId);
+    if (kind === 'camera') void room?.setCameraDevice(deviceId);
+    // Комната о выводе звука не знает и ничего не объявит — перерисовываем
+    // сами, чтобы setSinkId дошёл до проигрывателей.
+    if (kind === 'speaker' && room) paint(room.state());
+  },
+});
+
+app.querySelector('#settings-open').onclick = () => void settings.open();
 
 // Пробел — быстрый выключатель микрофона. Работает только на экране
 // звонка и только когда там есть чем управлять.

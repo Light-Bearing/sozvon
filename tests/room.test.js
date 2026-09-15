@@ -72,14 +72,31 @@ const fakeLadder = steps => {
 // RTCPeerConnection к собеседникам.
 const fakeConnection = () => {
   const pcs = new Map();
+  // Каналы обмена (имена, уровни звука) — по одному на пространство имён,
+  // как у настоящего connection.action(). Тест добирается до отправленного
+  // через sent, а входящее играет через onMessage.
+  const channels = new Map();
   return {
     handlers: null,
     addStream: vi.fn(),
     addTrack: vi.fn(),
     removeTrack: vi.fn(),
+    replaceTrack: vi.fn(),
     getPeers: () => Object.fromEntries(pcs),
     leave: vi.fn().mockResolvedValue(undefined),
     setPeer: (peerId, pc) => pcs.set(peerId, pc),
+    action: namespace => {
+      if (!channels.has(namespace)) {
+        const channel = {sent: [], onMessage: null};
+        channel.send = data => {
+          channel.sent.push(data);
+          return Promise.resolve();
+        };
+        channels.set(namespace, channel);
+      }
+      return channels.get(namespace);
+    },
+    channel: namespace => channels.get(namespace),
   };
 };
 
@@ -93,6 +110,7 @@ const openRoom = async ({
   media = fakeMedia(),
   ladder = fakeLadder([FULL]),
   onChange = vi.fn(),
+  name,
 } = {}) => {
   const room = await createRoom({
     secret: 'секрет-теста',
@@ -100,6 +118,7 @@ const openRoom = async ({
     media,
     ladder,
     onChange,
+    name,
   });
   return {room, connection, media, ladder, onChange};
 };
@@ -709,5 +728,98 @@ describe('беда с прямым путём доходит до состоян
     connection.handlers.onTrouble([]);
 
     expect(room.state().troubles).toEqual([]);
+  });
+});
+
+describe('имена участников', () => {
+  it('без заданного имени придумывается смешное из двух слов', async () => {
+    const {room} = await openRoom();
+
+    expect(room.state().name.split(' ')).toHaveLength(2);
+  });
+
+  it('заданное имя берётся как есть, только чистится', async () => {
+    const {room} = await openRoom({name: '  Пётр   Иванович  '});
+
+    expect(room.state().name).toBe('Пётр Иванович');
+  });
+
+  it('вошедшему сразу отсылается своё имя', async () => {
+    const {room, connection} = await openRoom({name: 'Пётр'});
+
+    connection.handlers.onPeerJoin('петя');
+
+    expect(connection.channel('name').sent).toEqual(['Пётр']);
+  });
+
+  it('чужое имя попадает на плитку собеседника', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+
+    connection.channel('name').onMessage('Сонная Выдра', {peerId: 'петя'});
+
+    expect(room.state().peers).toEqual([
+      {peerId: 'петя', stream: null, name: 'Сонная Выдра'},
+    ]);
+  });
+
+  it('смена имени в звонке уходит собеседникам', async () => {
+    const {room, connection} = await openRoom({name: 'Пётр'});
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('name').sent.length = 0;
+
+    room.setName('Пётр Иванович');
+
+    expect(room.state().name).toBe('Пётр Иванович');
+    expect(connection.channel('name').sent).toEqual(['Пётр Иванович']);
+  });
+
+  it('пустое имя не оставляет плитку безымянной', async () => {
+    const {room} = await openRoom({name: 'Пётр'});
+
+    room.setName('   ');
+
+    expect(room.state().name.split(' ')).toHaveLength(2);
+  });
+
+  it('ушедший уносит своё имя', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('name').onMessage('Сонная Выдра', {peerId: 'петя'});
+
+    connection.handlers.onPeerLeave('петя');
+    connection.handlers.onPeerJoin('петя');
+
+    expect(room.state().peers[0].name).toBe(null);
+  });
+});
+
+describe('выбор устройства из настроек', () => {
+  const mediaWithSwap = swap => ({...fakeMedia(), useMicrophone: vi.fn().mockResolvedValue(swap), useCamera: vi.fn().mockResolvedValue(swap), chosen: () => ({microphone: null, camera: null})});
+
+  it('новая дорожка микрофона переставляется на соединениях', async () => {
+    const swap = {old: {id: 'старая'}, next: {id: 'новая'}};
+    const {room, connection} = await openRoom({media: mediaWithSwap(swap)});
+
+    await room.setMicrophoneDevice('м2');
+
+    expect(connection.replaceTrack).toHaveBeenCalledWith(swap.old, swap.next);
+  });
+
+  it('без живой дорожки выбор просто запоминается, ничего не переставляется', async () => {
+    const {room, connection} = await openRoom({media: mediaWithSwap(null)});
+
+    await room.setMicrophoneDevice('м2');
+
+    expect(connection.replaceTrack).not.toHaveBeenCalled();
+  });
+
+  it('камера переставляется тем же порядком', async () => {
+    const swap = {old: {id: 'старая'}, next: {id: 'новая'}};
+    const {room, connection} = await openRoom({media: mediaWithSwap(swap)});
+
+    await room.setCameraDevice('к2');
+
+    expect(connection.replaceTrack).toHaveBeenCalledWith(swap.old, swap.next);
   });
 });
