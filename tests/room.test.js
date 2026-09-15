@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {createRoom} from '../src/room.js';
+import {createMedia} from '../src/media.js';
 import {createLadder, stepForPeers, STEPS} from '../src/ladder.js';
 
 // createRoom.state() зовёт secretToLink() без базы — та берёт глобальный
@@ -408,5 +409,87 @@ describe('измерение уровня звука не должно молч�
     } finally {
       globalThis.AudioContext = previousAudioContext;
     }
+  });
+});
+
+// Находка «не молчать» 1: media.applyStep (src/media.js) безусловно ставил
+// video.enabled = true перед перенастройкой камеры (applyConstraints,
+// 100–600 мс) — и если человек только что выключил камеру, а в этот же такт
+// сменилась ступень (например, зашёл третий и full → small), поправка
+// приходила только после двух await — applyStep и applyBitrateCeiling —
+// а всё это время живые кадры уходили всем собеседникам. fakeMedia() выше
+// в этом файле — пустышка (applyStep ничего не делает), поэтому обычные
+// тесты на такт лестницы эту гонку видеть не могут в принципе: нужен
+// настоящий src/media.js по обе стороны гонки.
+describe('камера не включается против воли человека при смене ступени (настоящий media.js)', () => {
+  it('video.enabled ни разу не становится true между выключением камеры и следующим тактом лестницы', async () => {
+    const enabledHistory = [];
+    let enabledValue = true;
+    const video = {
+      kind: 'video',
+      applyConstraints: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn(),
+      get enabled() {
+        return enabledValue;
+      },
+      set enabled(v) {
+        enabledValue = v;
+        enabledHistory.push(v);
+      },
+    };
+    const audio = {kind: 'audio', enabled: true, stop: vi.fn()};
+    const stream = {
+      getVideoTracks: () => [video],
+      getAudioTracks: () => [audio],
+      getTracks: () => [audio, video],
+    };
+    const media = createMedia({getUserMedia: vi.fn().mockResolvedValue(stream)});
+
+    // full -> small: обычный видео-режим (videoFor: 'all' у обеих), не
+    // голосовой, — ровно тот переход, где раньше проявлялась гонка.
+    const ladder = fakeLadder([SMALL]);
+    const {room} = await openRoom({media, ladder});
+
+    room.setCamera(false);
+    enabledHistory.length = 0; // дальше важно только то, что после выключения
+
+    await vi.advanceTimersByTimeAsync(STATS_EVERY_MS); // такт со сменой ступени
+
+    expect(enabledHistory).not.toContain(true);
+    expect(video.enabled).toBe(false);
+
+    await room.leave();
+  });
+});
+
+// Находка «не молчать» 2: захват медиа идёт до подключения, а подключение
+// по-настоящему может отклониться (WAIT_FOR_LIFE_MS в src/signal/index.js).
+// Раньше при отказе createRoom падал целиком, а поток никто не гасил —
+// media.stop() жил только в leave(), до которого дело не доходило: человек
+// видел «Связь не установилась», а камера продолжала гореть до закрытия
+// вкладки.
+describe('поток гасится, если рукопожатие не состоялось', () => {
+  it('media.stop() вызывается до того, как ошибка connectFn() долетит до вызывающего', async () => {
+    const media = fakeMedia();
+    const boom = Object.assign(new Error('ни собеседника, ни живого канала'), {
+      name: 'HandshakeTimeoutError',
+    });
+    const connectFn = vi.fn().mockRejectedValue(boom);
+
+    await expect(
+      createRoom({secret: 'секрет-теста', connectFn, media, ladder: fakeLadder([FULL])})
+    ).rejects.toBe(boom);
+
+    expect(media.start).toHaveBeenCalled(); // поток был захвачен...
+    expect(media.stop).toHaveBeenCalled(); // ...и погашен, а не оставлен гореть
+  });
+
+  it('успешное подключение media.stop() не трогает', async () => {
+    const {room, media} = await openRoom();
+
+    expect(media.stop).not.toHaveBeenCalled();
+
+    await room.leave();
+    expect(media.stop).toHaveBeenCalledTimes(1);
   });
 });

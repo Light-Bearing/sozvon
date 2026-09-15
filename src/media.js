@@ -25,14 +25,20 @@ export const createMedia = ({
 
     // Ужимаем существующую дорожку вместо повторного захвата: повторный
     // getUserMedia моргает камерой и пугает человека.
+    //
+    // Дорожку не включаем и не выключаем — enabled целиком в ведении
+    // setCamera() ниже (единый хозяин — см. applyDesiredMedia() в
+    // src/room.js). Раньше эта функция безусловно ставила enabled = true
+    // перед перенастройкой камеры (100–600 мс на applyConstraints) — и если
+    // человек только что выключил камеру, а в этот же такт сменилась
+    // ступень, включение происходило прямо здесь, синхронно, до того как
+    // room.js успевал хоть что-то поправить: поправка приходит только после
+    // await этой функции, а к тому моменту живые кадры уже ушли всем
+    // собеседникам. Значение по умолчанию (true) на момент создания
+    // дорожки задаёт сам браузер при getUserMedia.
     applyStep: async step => {
       const [video] = stream?.getVideoTracks() ?? [];
-      if (!video) return;
-      if (step.videoFor === 'none') {
-        video.enabled = false;
-        return;
-      }
-      video.enabled = true;
+      if (!video || step.videoFor === 'none') return;
       await video.applyConstraints({
         width: {ideal: step.width},
         height: {ideal: step.height},

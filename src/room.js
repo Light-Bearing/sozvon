@@ -44,23 +44,35 @@ export const createRoom = async ({
 
   const stream = await media.start(step);
 
-  const connection = await connectFn({
-    secret,
-    handlers: {
-      onPeerJoin: peerId => {
-        peers.set(peerId, null);
-        announce();
+  // Камера и микрофон захвачены уже здесь, а рукопожатие теперь по-настоящему
+  // может не состояться (WAIT_FOR_LIFE_MS в src/signal/index.js — 45 секунд
+  // и отказ). Если connectFn() отклонился, createRoom падает целиком, и без
+  // этой обёртки поток остался бы жить: media.stop() вызывается только в
+  // leave(), а до leave() дело не доходит — экран покажет «Связь не
+  // установилась», а лампочка камеры будет гореть до закрытия вкладки.
+  let connection;
+  try {
+    connection = await connectFn({
+      secret,
+      handlers: {
+        onPeerJoin: peerId => {
+          peers.set(peerId, null);
+          announce();
+        },
+        onPeerLeave: peerId => {
+          peers.delete(peerId);
+          announce();
+        },
+        onPeerStream: (peerStream, peerId) => {
+          peers.set(peerId, peerStream);
+          announce();
+        },
       },
-      onPeerLeave: peerId => {
-        peers.delete(peerId);
-        announce();
-      },
-      onPeerStream: (peerStream, peerId) => {
-        peers.set(peerId, peerStream);
-        announce();
-      },
-    },
-  });
+    });
+  } catch (error) {
+    media.stop();
+    throw error;
+  }
 
   connection.addStream(stream);
   announce();

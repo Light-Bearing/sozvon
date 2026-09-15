@@ -67,15 +67,39 @@ describe('камера', () => {
     });
   });
 
-  it('голосовой режим гасит дорожку, но звук оставляет', async () => {
+  it('голосовой режим не перенастраивает видео — гасить дорожку не его дело', async () => {
     const stream = fakeStream();
     const media = createMedia({getUserMedia: vi.fn().mockResolvedValue(stream)});
 
     await media.start(stepForPeers(2));
     await media.applyStep(STEPS.at(-1));
 
-    expect(stream.video.enabled).toBe(false);
+    // applyStep больше не трогает enabled ни в одну сторону — единый
+    // хозяин дорожки это setCamera() (через applyDesiredMedia() в
+    // src/room.js), поэтому здесь дорожка остаётся как была.
+    expect(stream.video.applyConstraints).not.toHaveBeenCalled();
+    expect(stream.video.enabled).toBe(true);
     expect(stream.audio.enabled).toBe(true);
+  });
+
+  // Находка 1 (см. src/media.js): applyStep безусловно ставил enabled = true
+  // перед перенастройкой камеры (applyConstraints, 100–600 мс) — и если
+  // человек только что выключил камеру, а в этот же такт сменилась ступень,
+  // живые кадры уходили собеседникам ещё до того, как room.js успевал
+  // поправить. Теперь applyStep вообще не имеет права писать в enabled.
+  it('applyStep ни при каких условиях не включает и не выключает дорожку — это дело setCamera', async () => {
+    const stream = fakeStream();
+    const media = createMedia({getUserMedia: vi.fn().mockResolvedValue(stream)});
+    await media.start(stepForPeers(2));
+
+    stream.video.enabled = false; // человек выключил камеру
+
+    // Смена ступени на обычный видео-режим (не voice) — раньше именно
+    // здесь enabled синхронно становился true.
+    await media.applyStep(stepForPeers(4));
+
+    expect(stream.video.enabled).toBe(false);
+    expect(stream.video.applyConstraints).toHaveBeenCalled(); // перенастройка при этом всё же случилась
   });
 
   it('выключатели гасят нужные дорожки', async () => {
