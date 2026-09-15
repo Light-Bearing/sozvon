@@ -1,424 +1,64 @@
-/* «Созвон» — тёмный гардероб, латунный номерок.
-   Ссылка здесь работает как номерок: у кого она, тот и войдёт. Вся
-   образность отсюда, а не придумана поверх. */
+/* «Созвон».
+   Интерфейс намеренно без цвета: в видеозвонке единственный цвет, который
+   должен быть на экране, — цвет лиц, и любой фирменный оттенок с тоном кожи
+   спорит. Цветных всего два, оба служебные: «связь есть» и «положить трубку».
+   Каждый встречается ровно в одном месте. */
 
 @import './fonts.css';
 
 :root {
-  --ink: #111815;
-  --ink-raise: #1a2420;
-  --ink-sink: #0b100e;
-  --hairline: #26322d;
+  --ink: #141317;
+  --surface: #1c1b21;
+  --raised: #26242c;
+  --line: #33313b;
 
-  --brass: #c9a24a;
-  --brass-lit: #e8c877;
-  --brass-deep: #7e6227;
+  --text: #f2f0f4;
+  --dim: #9a96a3;
+  --faint: #6c6877;
 
-  --chalk: #e6e4dc;
-  --muted: #8a938c;
-  --brick: #be5a43;
+  --live: #5bd08a;
+  --leave: #f0614f;
 
-  --step: clamp(0.9rem, 0.6rem + 0.8vw, 1.05rem);
-  --gap: clamp(1rem, 0.6rem + 1.6vw, 1.75rem);
-  --radius: 14px;
+  --dock-h: 3.5rem;
+  --pad: clamp(1.25rem, 0.8rem + 2vw, 2.25rem);
 }
 
 * { box-sizing: border-box; }
 
-html, body { height: 100%; }
+/* Скрытое должно быть скрыто. Любой явный display в наших правилах
+   перебивает встроенное [hidden] { display: none } — а на этом держится
+   всё переключение экранов, и ломается оно молча: экраны просто рисуются
+   один поверх другого. */
+[hidden] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
-  background:
-    radial-gradient(120% 90% at 50% -10%, #16201c 0%, var(--ink) 55%, var(--ink-sink) 100%);
-  color: var(--chalk);
-  font: var(--step)/1.6 'Golos Text', system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-
-#app {
   min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  padding: var(--gap);
+  background: var(--ink);
+  color: var(--text);
+  font: 400 1rem/1.55 'Golos Text', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-section {
-  width: min(100%, 44rem);
-  animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+.sprite { display: none; }
+
+.i {
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
 }
 
-@keyframes rise {
-  from { opacity: 0; transform: translateY(10px); }
-}
-
-/* ── заголовки ─────────────────────────────────────────── */
-
-.wordmark {
-  font-family: 'Unbounded', 'Golos Text', sans-serif;
-  font-weight: 600;
-  font-size: clamp(2.2rem, 1.4rem + 3.4vw, 3.4rem);
-  letter-spacing: -0.03em;
-  line-height: 1;
-  margin: 0;
-}
-
-.wordmark span { color: var(--muted); font-weight: 500; }
-
-.headline {
-  font-family: 'Unbounded', 'Golos Text', sans-serif;
-  font-weight: 500;
-  font-size: clamp(1.5rem, 1.1rem + 1.8vw, 2.1rem);
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-  margin: 0 0 0.6rem;
-}
-
-.lede {
-  color: var(--muted);
-  max-width: 34rem;
-  margin: 0.9rem 0 0;
-}
-
-.lede b {
-  color: var(--chalk);
-  font-weight: 500;
-}
-
-.footnote {
-  color: var(--muted);
-  font-size: 0.86em;
-  margin: 0.8rem 0 0;
-}
-
-/* ── номерок ───────────────────────────────────────────── */
-
-.tag {
-  position: relative;
-  display: block;
-  width: 100%;
-  border: 0;
-  padding: 1.5rem 1.4rem 1.3rem;
-  border-radius: 18px;
-  text-align: left;
-  color: #2a2109;
-  font-family: inherit;
-  background:
-    linear-gradient(158deg, var(--brass-lit) 0%, var(--brass) 38%, #b08e3d 62%, var(--brass-deep) 100%);
-  box-shadow:
-    inset 0 1.5px 0 rgba(255, 248, 222, 0.85),
-    inset 0 0 0 1px rgba(255, 240, 200, 0.18),
-    inset 0 -3px 0 rgba(58, 42, 8, 0.45),
-    0 18px 38px -14px rgba(0, 0, 0, 0.9);
-}
-
-/* дырка, через которую номерок вешают на крючок */
-.tag::before {
-  content: '';
-  position: absolute;
-  top: 0.85rem;
-  left: 50%;
-  translate: -50% 0;
-  width: 1.1rem;
-  height: 1.1rem;
-  border-radius: 50%;
-  background: var(--ink-sink);
-  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 246, 214, 0.45);
-}
-
-.tag--hung {
-  width: min(100%, 26rem);
-  padding-top: 2.9rem;
-  rotate: -1.1deg;
-  transform-origin: 50% 1.4rem;
-  animation: sway 1.4s cubic-bezier(0.3, 0.8, 0.4, 1) both;
-}
-
-@keyframes sway {
-  0%   { rotate: -6deg; }
-  40%  { rotate: 2.5deg; }
-  70%  { rotate: -2deg; }
-  100% { rotate: -1.1deg; }
-}
-
-.tag-label {
-  display: block;
-  font-size: 0.72rem;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: rgba(42, 33, 9, 0.62);
-  margin-bottom: 0.35rem;
-}
-
-.tag-code {
-  display: block;
-  font-family: 'Martian Mono', ui-monospace, monospace;
-  font-weight: 500;
-  font-size: clamp(0.85rem, 0.55rem + 1.35vw, 1.3rem);
-  letter-spacing: -0.03em;
-  word-break: break-all;
-  line-height: 1.35;
-  /* выштамповано, а не напечатано */
-  text-shadow: 0 1px 0 rgba(255, 246, 214, 0.5);
-}
-
-/* Номерок как кнопка «Позвонить» на первом экране.
-   Ширину держим небольшой намеренно: номерок — вещь, которую держат
-   в руке, а растянутый во всю строку он читается золотым бруском. */
-.tag--action {
-  width: min(100%, 19rem);
-  cursor: pointer;
-  text-align: center;
-  padding: 2.9rem 1.4rem 1.7rem;
-  border-radius: 20px;
-  transition: translate 0.15s ease, box-shadow 0.15s ease;
-}
-
-.tag--action .tag-title {
-  font-family: 'Unbounded', sans-serif;
-  font-weight: 600;
-  font-size: clamp(1.15rem, 0.9rem + 1vw, 1.5rem);
-  letter-spacing: -0.02em;
-  display: block;
-}
-
-.tag--action:hover { translate: 0 -2px; }
-
-.tag--action:active {
-  translate: 0 1px;
-  box-shadow: inset 0 2px 6px rgba(60, 44, 10, 0.5);
-}
-
-/* маленький номерок в углу экрана звонка */
-.tag--pocket {
-  width: auto;
-  padding: 0.55rem 0.85rem;
-  border-radius: 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-.tag--pocket::before { display: none; }
-
-.tag--pocket .tag-code {
-  font-size: 0.78rem;
-  max-width: 11rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  word-break: normal;
-}
-
-/* ── кнопки ────────────────────────────────────────────── */
-
-.btn {
-  font: inherit;
-  font-weight: 500;
-  color: var(--chalk);
-  background: var(--ink-raise);
-  border: 1px solid var(--hairline);
-  border-radius: 10px;
-  padding: 0.7rem 1.2rem;
-  cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
-}
-
-.btn:hover { border-color: var(--brass-deep); }
-
-.btn--brass {
-  background: var(--brass);
-  border-color: var(--brass-lit);
-  color: #241c06;
-  font-weight: 600;
-}
-
-.btn--brass:hover { background: var(--brass-lit); }
-
-.btn--quiet {
-  background: none;
-  border: 0;
-  color: var(--muted);
-  padding: 0.6rem 0;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.btn--quiet:hover { color: var(--brass); }
-
-.btn--leave {
-  background: none;
-  border-color: rgba(190, 90, 67, 0.45);
-  color: var(--brick);
-}
-
-.btn--leave:hover {
-  background: rgba(190, 90, 67, 0.12);
-  border-color: var(--brick);
-}
-
-.btn[aria-pressed='false'] {
-  color: var(--muted);
-  border-style: dashed;
-}
-
-:where(button, [href], input):focus-visible {
-  outline: 2px solid var(--brass-lit);
+:where(button):focus-visible {
+  outline: 2px solid var(--text);
   outline-offset: 3px;
-}
-
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  align-items: center;
-  margin-top: 1.4rem;
-}
-
-/* ── ожидание ──────────────────────────────────────────── */
-
-.waiting {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  color: var(--muted);
-  margin: 1.2rem 0 0;
-}
-
-.waiting::before {
-  content: '';
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--brass);
-  animation: breathe 2.4s ease-in-out infinite;
-}
-
-@keyframes breathe {
-  50% { opacity: 0.2; }
-}
-
-/* ── экран звонка ──────────────────────────────────────── */
-
-.call { width: min(100%, 68rem); }
-
-.tiles {
-  display: grid;
-  gap: 0.7rem;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
-}
-
-.tiles--alone {
-  grid-template-columns: minmax(0, 15rem);
-  margin-top: 1.4rem;
-}
-
-.tile {
-  position: relative;
-  aspect-ratio: 4 / 3;
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: var(--ink-sink);
-  border: 1px solid var(--hairline);
-}
-
-.tile video {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-}
-
-.tile--self { border-color: var(--brass-deep); }
-
-.tile--dark::after {
-  content: attr(data-initial);
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font-family: 'Unbounded', sans-serif;
-  font-size: 2.4rem;
-  color: var(--brass-deep);
-  background: var(--ink-raise);
-}
-
-.tile-name {
-  position: absolute;
-  /* поверх заливки: у плитки без картинки заливка рисуется после и
-     иначе накрывает подпись */
-  z-index: 1;
-  left: 0.6rem;
-  bottom: 0.6rem;
-  padding: 0.2rem 0.55rem;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  background: rgba(11, 16, 14, 0.72);
-  backdrop-filter: blur(6px);
-}
-
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  margin-top: 1rem;
-  align-items: center;
-}
-
-.controls .spacer { flex: 1; }
-
-/* ── диагностика ───────────────────────────────────────── */
-
-.diag h2 {
-  font-family: 'Unbounded', sans-serif;
-  font-weight: 500;
-  font-size: 0.82rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--brass);
-  margin: 1.6rem 0 0.5rem;
-}
-
-.diag h2:first-child { margin-top: 0; }
-
-.diag p { margin: 0.3rem 0; }
-
-.diag ul {
-  list-style: none;
-  padding: 0;
-  margin: 0.6rem 0 0;
-  font-family: 'Martian Mono', ui-monospace, monospace;
-  font-size: 0.74rem;
-  line-height: 2.1;
-}
-
-.diag li {
-  display: flex;
-  gap: 0.7rem;
-  border-bottom: 1px solid var(--hairline);
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.diag li[data-ok='yes'] { color: var(--chalk); }
-.diag li[data-ok='yes'] .mark { color: var(--brass); }
-.diag li[data-ok='no'] .mark { color: var(--brick); }
-
-/* ── неудача ───────────────────────────────────────────── */
-
-.failed .headline { color: var(--brick); }
-
-/* ── мелкие экраны ─────────────────────────────────────── */
-
-@media (max-width: 30rem) {
-  .row .btn, .controls .btn { flex: 1 1 auto; }
-  .controls .spacer { display: none; }
-  .tag--pocket { width: 100%; }
-  .tag--pocket .tag-code { max-width: none; flex: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -427,5 +67,415 @@ section {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-  .tag--hung { rotate: 0deg; }
+}
+
+/* ── спокойные экраны: пуск, вход, неудача, проверка ─────── */
+
+/* Одна вертикальная ось на весь экран: логотип, текст и подпись стоят
+   в одной колонке. Разнесённые по углам, они читались как три разные
+   мысли на одном листе. */
+.pane {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2.5rem;
+  padding: var(--pad);
+  padding-block-end: max(var(--pad), env(safe-area-inset-bottom));
+  animation: fade 0.4s ease both;
+}
+
+.pane > * {
+  width: min(100%, 23rem);
+  margin-inline: auto;
+}
+
+.pane--wide > * { width: min(100%, 36rem); }
+
+@keyframes fade { from { opacity: 0; } }
+
+.wordmark {
+  /* именно margin-block: сокращённое margin: 0 перебило бы центрирование
+     колонки из .pane > * — тот же вес, но объявлено выше по файлу */
+  margin-block: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.34em;
+  text-transform: lowercase;
+  color: var(--faint);
+}
+
+.pane--wide { justify-content: start; padding-block-start: clamp(2rem, 8vh, 5rem); }
+
+.title {
+  margin-block: 0;
+  font-size: clamp(1.9rem, 1.4rem + 2.2vw, 2.6rem);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.028em;
+  text-wrap: balance;
+}
+
+.title--sm { font-size: clamp(1.4rem, 1.2rem + 1vw, 1.75rem); }
+
+.sub {
+  margin: 0.9rem 0 0;
+  color: var(--dim);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.pane-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: start;
+}
+
+.note {
+  color: var(--faint);
+  font-size: 0.8125rem;
+}
+
+.link {
+  font: inherit;
+  font-size: 0.875rem;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--dim);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--line);
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.link:hover { color: var(--text); text-decoration-color: currentColor; }
+
+/* ── главное действие ───────────────────────────────────── */
+
+.act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 3.25rem;
+  padding: 0 1.25rem;
+  font: inherit;
+  font-weight: 500;
+  font-size: 1rem;
+  border-radius: 0.875rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+}
+
+.act:hover { background: var(--raised); border-color: #3e3b48; }
+.act:active { transform: scale(0.985); }
+
+/* Единственная светлая плоскость в приложении — та, на которую надо нажать.
+   Без цвета: контраст сам по себе говорит «сюда» громче любого оттенка. */
+.act--primary {
+  margin-top: 1.75rem;
+  background: var(--text);
+  border-color: var(--text);
+  color: #17161a;
+  font-weight: 600;
+}
+
+.act--primary:hover { background: #fff; border-color: #fff; }
+
+.act--icon .i-done { display: none; }
+.act--icon.is-done .i-idle { display: none; }
+.act--icon.is-done .i-done { display: block; }
+
+/* ── экран звонка ───────────────────────────────────────── */
+
+/* Сцена — одна ячейка, в которой всё лежит друг на друге и центрируется
+   само. Раньше карточка ставилась смещениями и уезжала за край. */
+.stage {
+  position: relative;
+  /* Ровно один экран: звонок не прокручивается, кнопки всегда на месте. */
+  height: 100dvh;
+  display: grid;
+  grid-template-areas: 'main';
+  place-items: center;
+  overflow: hidden;
+}
+
+/* Собственная камера как обои: пока никто не зашёл, комната не пустая —
+   видно, что камера работает и как вы выглядите. */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(28px) brightness(0.4) saturate(0.7);
+  transform: scale(1.15);
+  transition: opacity 0.5s ease;
+}
+
+.stage[data-busy='yes'] .backdrop { opacity: 0; }
+
+.tiles {
+  grid-area: main;
+  width: 100%;
+  display: grid;
+  gap: 0.5rem;
+  padding: var(--pad);
+  padding-block-end: calc(var(--dock-h) + var(--pad) * 2);
+  align-content: center;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+/* Собеседники пришли — плитки делят экран между собой и заполняют его,
+   а не выстраиваются в прокручиваемый столбец. */
+.stage[data-busy='yes'] .tiles {
+  height: 100%;
+  grid-auto-rows: 1fr;
+  align-content: stretch;
+}
+
+.stage[data-busy='yes'] .tile {
+  aspect-ratio: auto;
+  min-height: 0;
+}
+
+/* Пока ждём — своё лицо маленькое, в углу: главное на экране ссылка. */
+.stage[data-busy='no'] .tiles {
+  position: absolute;
+  inset: auto auto calc(var(--dock-h) + var(--pad) * 1.6) var(--pad);
+  min-height: 0;
+  padding: 0;
+  width: 8.5rem;
+  grid-template-columns: 1fr;
+}
+
+.tile {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: 1rem;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  animation: pop 0.35s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@keyframes pop { from { opacity: 0; transform: scale(0.97); } }
+
+.stage[data-busy='no'] .tile { aspect-ratio: 3 / 4; }
+
+.tile video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.tile--self video { transform: scaleX(-1); }
+
+.tile--dark::after {
+  content: attr(data-initial);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.75rem;
+  font-weight: 500;
+  color: var(--faint);
+  background: var(--surface);
+}
+
+.tile-name {
+  position: absolute;
+  z-index: 1;
+  left: 0.6rem;
+  bottom: 0.6rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text);
+  background: rgba(10, 9, 12, 0.6);
+  backdrop-filter: blur(8px);
+}
+
+/* ── карточка со ссылкой ────────────────────────────────── */
+
+.invite {
+  grid-area: main;
+  z-index: 2;
+  width: min(100vw - var(--pad) * 2, 24rem);
+  margin-block-end: calc(var(--dock-h) + var(--pad));
+  padding: 1.5rem;
+  border-radius: 1.25rem;
+  background: rgba(28, 27, 33, 0.82);
+  backdrop-filter: blur(20px) saturate(1.2);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    0 24px 60px -20px rgba(0, 0, 0, 0.8);
+  animation: lift 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@keyframes lift { from { opacity: 0; translate: 0 10px; } }
+
+.invite-eyebrow {
+  margin-block: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.invite-link {
+  margin: 0.5rem 0 0;
+  font-family: 'Martian Mono', ui-monospace, monospace;
+  font-size: 0.75rem;
+  line-height: 1.7;
+  letter-spacing: -0.04em;
+  color: var(--dim);
+  word-break: break-all;
+  user-select: all;
+}
+
+.invite .act--primary { margin-top: 1.25rem; }
+
+.invite-state,
+.invite-quiet {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--faint);
+}
+
+.invite-quiet {
+  display: block;
+  color: var(--dim);
+  line-height: 1.5;
+}
+
+.pulse {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--live);
+  flex: none;
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes breathe { 50% { opacity: 0.25; } }
+
+/* ── кнопки звонка ──────────────────────────────────────── */
+
+.dock {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  translate: -50% 0;
+  bottom: max(var(--pad), env(safe-area-inset-bottom));
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.4rem;
+  border-radius: 999px;
+  background: rgba(28, 27, 33, 0.8);
+  backdrop-filter: blur(20px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+
+.ctl {
+  width: var(--dock-h);
+  height: var(--dock-h);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ctl:hover { background: rgba(255, 255, 255, 0.08); }
+
+/* Выключено — заливка и перечёркнутый значок. Форма и цвет говорят одно
+   и то же, чтобы состояние читалось и без различения оттенков. */
+.ctl .i-off { display: none; }
+
+.ctl[aria-pressed='false'] {
+  background: var(--text);
+  color: #17161a;
+}
+
+.ctl[aria-pressed='false'] .i-on { display: none; }
+.ctl[aria-pressed='false'] .i-off { display: block; }
+
+.ctl:disabled { opacity: 0.35; cursor: not-allowed; }
+.ctl:disabled:hover { background: transparent; }
+
+.ctl--leave { background: var(--leave); color: #fff; }
+.ctl--leave:hover { background: #f4776a; }
+
+.ctl--copy .i-done { display: none; }
+.ctl--copy.is-done { background: var(--live); color: #17161a; }
+.ctl--copy.is-done .i-idle { display: none; }
+.ctl--copy.is-done .i-done { display: block; }
+
+/* ── проверка связи ─────────────────────────────────────── */
+
+.diag { margin-top: 1.5rem; }
+
+.diag h2 {
+  margin: 1.75rem 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.diag h2:first-child { margin-top: 0; }
+
+.diag p { margin: 0.35rem 0; color: var(--dim); font-size: 0.9375rem; }
+
+.diag ul {
+  list-style: none;
+  margin: 0.9rem 0 0;
+  padding: 0;
+  font-family: 'Martian Mono', ui-monospace, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: -0.03em;
+}
+
+.diag li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+  overflow: hidden;
+}
+
+.diag li > :nth-child(2) {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diag li[data-ok='yes'] { color: var(--dim); }
+.diag li[data-ok='yes'] .mark { color: var(--live); }
+.diag li[data-ok='no'] .mark { color: var(--leave); }
+
+/* ── мелкие экраны ──────────────────────────────────────── */
+
+@media (max-width: 26rem) {
+  .stage[data-busy='no'] .tiles { width: 6.5rem; }
+  .dock { width: calc(100% - var(--pad) * 2); justify-content: center; }
 }

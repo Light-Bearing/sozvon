@@ -1,48 +1,71 @@
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {waitUntilAlive, WAIT_FOR_LIFE_MS} from '../src/signal/index.js';
+import {beforeEach, afterEach, describe, expect, it, vi} from 'vitest';
+import {watchForLife, QUIET_HINT_AFTER_MS} from '../src/signal/index.js';
 
-// Находка 5: joinPublicChannels() никогда не отклонялся, и ожидание ничем
-// не было ограничено. Если недоступны все трекеры, релеи и брокеры разом
-// (корпоративная сеть, блокировки), createRoom спокойно выполнялся, экран
-// звонка рисовался, и обе стороны бесконечно сидели на «жду, когда зайдут».
-// waitUntilAlive — сердце починки: проверяем саму механику ожидания
-// отдельно от настоящих каналов и настоящей криптографии connect().
-describe('waitUntilAlive: ждём признаков жизни, но не вечно', () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
 
-  it('не ждёт вовсе, если признак жизни уже есть', async () => {
-    await expect(waitUntilAlive(() => true)).resolves.toBeUndefined();
+// Здесь стояла проверка предела ожидания, который ОТКЛОНЯЛ подключение
+// через 45 секунд. Тот предел оказался вреден: проверка «канал жив»
+// сверяет адреса строка в строку с тем, что отдаёт библиотека, и одно
+// расхождение ключа делало её навсегда ложной — вместе с исправным
+// звонком, в том числе по одному Wi-Fi, где соединение обязано вставать
+// сразу. Наблюдение осталось, право убивать звонок — нет.
+describe('наблюдение за признаками жизни', () => {
+  it('когда канал жив сразу — про молчание не заикается', () => {
+    const onQuiet = vi.fn();
+    const stop = watchForLife(() => true, onQuiet);
+
+    vi.advanceTimersByTime(QUIET_HINT_AFTER_MS * 3);
+
+    expect(onQuiet).not.toHaveBeenCalledWith(true);
+    stop();
   });
 
-  it('сдаётся по истечении отведённого времени, если признаков жизни так и не появилось', async () => {
-    const promise = waitUntilAlive(() => false, WAIT_FOR_LIFE_MS);
-    const assertion = expect(promise).rejects.toThrow();
+  it('когда признаков жизни долго нет — подсказывает, но ничего не ломает', () => {
+    const onQuiet = vi.fn();
+    const stop = watchForLife(() => false, onQuiet);
 
-    await vi.advanceTimersByTimeAsync(WAIT_FOR_LIFE_MS);
-    await assertion;
+    vi.advanceTimersByTime(QUIET_HINT_AFTER_MS - 1000);
+    expect(onQuiet).not.toHaveBeenCalledWith(true);
+
+    vi.advanceTimersByTime(1000);
+    expect(onQuiet).toHaveBeenCalledWith(true);
+    stop();
   });
 
-  it('дожидается момента, когда признак жизни появляется, и не ждёт дольше', async () => {
+  it('подсказывает один раз, а не на каждом опросе', () => {
+    const onQuiet = vi.fn();
+    const stop = watchForLife(() => false, onQuiet);
+
+    vi.advanceTimersByTime(QUIET_HINT_AFTER_MS * 4);
+
+    expect(onQuiet.mock.calls.filter(([q]) => q === true)).toHaveLength(1);
+    stop();
+  });
+
+  it('ожил после молчания — подсказка снимается', () => {
     let alive = false;
-    setTimeout(() => (alive = true), 2_000); // «канал ожил» на второй секунде
+    const onQuiet = vi.fn();
+    const stop = watchForLife(() => alive, onQuiet);
 
-    const promise = waitUntilAlive(() => alive, WAIT_FOR_LIFE_MS);
-    await vi.advanceTimersByTimeAsync(2_000);
+    vi.advanceTimersByTime(QUIET_HINT_AFTER_MS);
+    expect(onQuiet).toHaveBeenCalledWith(true);
 
-    await expect(promise).resolves.toBeUndefined();
+    alive = true;
+    vi.advanceTimersByTime(1000);
+    expect(onQuiet).toHaveBeenLastCalledWith(false);
+    stop();
   });
 
-  it('ошибка отказа — человеческая по типу (не падает на getUserMedia-подобные имена), диагностика решит остальное', async () => {
-    const promise = waitUntilAlive(() => false, WAIT_FOR_LIFE_MS);
-    const assertion = promise.catch(error => error);
+  it('остановка прекращает опрос', () => {
+    const alive = vi.fn(() => false);
+    const stop = watchForLife(alive, vi.fn());
 
-    await vi.advanceTimersByTimeAsync(WAIT_FOR_LIFE_MS);
-    const error = await assertion;
+    vi.advanceTimersByTime(2000);
+    const before = alive.mock.calls.length;
+    stop();
+    vi.advanceTimersByTime(10_000);
 
-    expect(error).toBeInstanceOf(Error);
-    // Имя не должно совпасть ни с одним из кейсов explainFailure() для
-    // ошибок доступа к камере — иначе экран «не вышло» соврёт про камеру.
-    expect(['NotAllowedError', 'NotFoundError', 'NotReadableError']).not.toContain(error.name);
+    expect(alive.mock.calls.length).toBe(before);
   });
 });

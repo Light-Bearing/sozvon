@@ -31,8 +31,14 @@ export const createRoom = async ({
   let cameraWanted = true;
   let microphoneWanted = true;
 
+  // Каналы рукопожатия долго молчат. Это подсказка человеку, а не отказ:
+  // звонок продолжает попытки, просто перестаёт делать вид, что всё идёт
+  // как надо.
+  let quiet = false;
+
   const state = () => ({
     link: secretToLink(secret),
+    quiet,
     step,
     self: media.current(),
     mic: microphoneWanted,
@@ -44,16 +50,20 @@ export const createRoom = async ({
 
   const stream = await media.start(step);
 
-  // Камера и микрофон захвачены уже здесь, а рукопожатие теперь по-настоящему
-  // может не состояться (WAIT_FOR_LIFE_MS в src/signal/index.js — 45 секунд
-  // и отказ). Если connectFn() отклонился, createRoom падает целиком, и без
-  // этой обёртки поток остался бы жить: media.stop() вызывается только в
-  // leave(), а до leave() дело не доходит — экран покажет «Связь не
-  // установилась», а лампочка камеры будет гореть до закрытия вкладки.
+  // Камера и микрофон захвачены уже здесь, а подключение может не
+  // состояться по другой причине. Если connectFn() отклонился, поток
+  // надо погасить: media.stop() живёт только в leave(), а до leave()
+  // дело не дойдёт — человек увидит экран неудачи, а лампочка камеры
+  // будет гореть до закрытия вкладки.
   let connection;
   try {
     connection = await connectFn({
       secret,
+      onQuiet: isQuiet => {
+        if (quiet === isQuiet) return;
+        quiet = isQuiet;
+        announce();
+      },
       handlers: {
         onPeerJoin: peerId => {
           peers.set(peerId, null);

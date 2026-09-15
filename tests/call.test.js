@@ -8,21 +8,21 @@ import {STEPS} from '../src/ladder.js';
 const root = () => {
   const el = document.createElement('div');
   el.innerHTML = `
-    <div id="invite">
-      <button data-copy class="tag tag--hung" type="button">
-        <span class="tag-label">Нажмите, чтобы скопировать</span>
-        <span data-link class="tag-code"></span>
+    <video id="backdrop" class="backdrop"></video>
+    <div id="invite" class="invite">
+      <p id="link" class="invite-link"></p>
+      <button data-copy class="act act--primary act--icon" type="button">
+        <span data-copy-label>Скопировать ссылку</span>
       </button>
-      <p class="waiting" id="waiting">Жду, когда зайдут</p>
+      <p class="invite-state" id="waiting">Жду, когда зайдут</p>
+      <p class="invite-quiet" id="quiet" hidden></p>
     </div>
     <div id="tiles" class="tiles"></div>
-    <div class="controls">
-      <button id="mic" class="btn" type="button"></button>
-      <button id="cam" class="btn" type="button"></button>
-      <button data-copy class="tag tag--pocket" type="button" hidden>
-        <span data-link class="tag-code"></span>
-      </button>
-      <button id="hangup" class="btn btn--leave" type="button"></button>
+    <div class="dock">
+      <button id="mic" class="ctl" type="button"></button>
+      <button id="cam" class="ctl" type="button"></button>
+      <button data-copy class="ctl ctl--copy" type="button" hidden></button>
+      <button id="hangup" class="ctl ctl--leave" type="button"></button>
     </div>`;
   return el;
 };

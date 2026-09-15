@@ -5,43 +5,43 @@
 import {deriveRoomId, derivePassword} from '../room-secret.js';
 import {joinPublicChannels} from './public-channels.js';
 
-// Сколько ждать хоть каких-то признаков жизни — собеседника или живого
-// канала, — прежде чем сдаться. Дольше ждать бессмысленно: если за 45
-// секунд не появилось ни того, ни другого, дело не в медлительности сети,
-// а в том, что все трекеры, релеи и брокеры разом недоступны (корпоративная
-// сеть, блокировки). Раньше ожидание ничем не было ограничено: createRoom
-// спокойно завершался, экран звонка рисовался, и обе стороны бесконечно
-// сидели на «жду, когда зайдут», не понимая, что дело безнадёжно.
-export const WAIT_FOR_LIFE_MS = 45_000;
+// Через сколько молчания стоит сказать человеку, что дело, похоже, плохо.
+// Это именно подсказка, а не приговор: звонок продолжает попытки.
+export const QUIET_HINT_AFTER_MS = 20_000;
 const POLL_EVERY_MS = 500;
 
-const timeoutError = () =>
-  Object.assign(new Error('Ни собеседника, ни живого канала не появилось за отведённое время'), {
-    name: 'HandshakeTimeoutError',
-  });
+// Наблюдает за признаками жизни и сообщает наверх, когда их долго нет.
+//
+// Раньше здесь стоял предел ожидания, который по истечении 45 секунд
+// ОТКЛОНЯЛ подключение, и звонок падал на экран «Связь не установилась».
+// Это была ошибка, и дорогая: проверка «канал жив» сверяет адреса строка
+// в строку с тем, что отдаёт библиотека, и одно расхождение ключа делало
+// alive навсегда ложным — а вместе с ним убивало совершенно исправный
+// звонок, в том числе по одному Wi-Fi, где соединение обязано вставать
+// сразу. Ожидание не должно иметь права ломать то, что работает: теперь
+// оно только подсказывает, а решает человек.
+export const watchForLife = (alive, onQuiet, quietAfterMs = QUIET_HINT_AFTER_MS) => {
+  const startedAt = Date.now();
+  let told = false;
 
-// Ждёт, пока alive() не станет истиной, опрашивая её каждые POLL_EVERY_MS.
-// Отдельная функция ради теста: проверяет саму механику ожидания без
-// настоящих каналов и настоящей криптографии.
-export const waitUntilAlive = (alive, waitMs = WAIT_FOR_LIFE_MS) =>
-  new Promise((resolve, reject) => {
-    if (alive()) return resolve();
+  const poll = setInterval(() => {
+    if (alive()) {
+      told = false;
+      onQuiet(false);
+      return;
+    }
+    if (!told && Date.now() - startedAt >= quietAfterMs) {
+      told = true;
+      onQuiet(true);
+    }
+  }, POLL_EVERY_MS);
 
-    const startedAt = Date.now();
-    const poll = setInterval(() => {
-      if (alive()) {
-        clearInterval(poll);
-        resolve();
-      } else if (Date.now() - startedAt >= waitMs) {
-        clearInterval(poll);
-        reject(timeoutError());
-      }
-    }, POLL_EVERY_MS);
-  });
+  return () => clearInterval(poll);
+};
 
 // families — необязательный параметр только для тестов, как и в
 // joinPublicChannels(), которому он передаётся насквозь.
-export const connect = async ({secret, handlers, families}) => {
+export const connect = async ({secret, handlers, families, onQuiet = () => {}}) => {
   const [roomId, password] = await Promise.all([
     deriveRoomId(secret),
     derivePassword(secret),
@@ -61,15 +61,18 @@ export const connect = async ({secret, handlers, families}) => {
     },
   });
 
-  try {
-    // peerSeen тоже считается жизнью: если собеседник уже нашёлся, неважно,
-    // что в этот самый момент опроса говорит status() — исход и так ясен.
-    await waitUntilAlive(() => peerSeen || connection.status().some(channel => channel.alive));
-  } catch (error) {
-    // Не встало — не оставляем за собой открытые сокеты и соединения.
-    await connection.leave().catch(() => {});
-    throw error;
-  }
+  // Подключение готово сразу — ждать тут нечего и незачем.
+  const stopWatching = watchForLife(
+    () => peerSeen || connection.status().some(channel => channel.alive),
+    onQuiet,
+  );
 
-  return connection;
+  const leave = connection.leave;
+  return {
+    ...connection,
+    leave: () => {
+      stopWatching();
+      return leave();
+    },
+  };
 };

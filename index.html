@@ -2,98 +2,138 @@
 <html lang="ru">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#111815" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#141317" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
     <title>Созвон</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
+    <!-- Значки кнопок лежат здесь один раз, а кнопки на них ссылаются. -->
+    <svg class="sprite" aria-hidden="true">
+      <symbol id="i-mic" viewBox="0 0 24 24">
+        <path d="M12 3.5a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0v-5a3 3 0 0 1 3-3Z" />
+        <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+      </symbol>
+      <symbol id="i-mic-off" viewBox="0 0 24 24">
+        <path d="M9 9.2V6.5a3 3 0 0 1 5.9-.7M15 12.3v-1.1" />
+        <path d="M9 11.4v.1a3 3 0 0 0 4.4 2.6" />
+        <path d="M5.5 11a6.5 6.5 0 0 0 10.2 5.3M12 17.5V21" />
+        <path d="m4 3 16 18" />
+      </symbol>
+      <symbol id="i-cam" viewBox="0 0 24 24">
+        <rect x="2.5" y="6" width="13" height="12" rx="3" />
+        <path d="m15.5 11 5-3v8l-5-3z" />
+      </symbol>
+      <symbol id="i-cam-off" viewBox="0 0 24 24">
+        <path d="M8 6h4.5a3 3 0 0 1 3 3v2m0 3a3 3 0 0 1-3 3H5.5a3 3 0 0 1-3-3V9a3 3 0 0 1 2-2.8" />
+        <path d="m15.5 11 5-3v8l-2.4-1.4" />
+        <path d="m4 3 16 18" />
+      </symbol>
+      <symbol id="i-leave" viewBox="0 0 24 24">
+        <path d="M5.2 12.6c4-3.5 9.6-3.5 13.6 0l1.4-2.4c-5-4.3-11.4-4.3-16.4 0Z" />
+        <path d="M8.6 15.4 7.4 13m8 2.4 1.2-2.4" />
+      </symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24">
+        <rect x="9" y="9" width="11" height="11" rx="2.5" />
+        <path d="M15 6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7" /></symbol>
+    </svg>
+
     <main id="app">
-      <section id="screen-start">
-        <h1 class="wordmark">Со<span>звон</span></h1>
-        <p class="lede">
-          Разговор напрямую между устройствами. <b>Ссылка работает как номерок в
-          гардеробе: у кого она — тот и войдёт.</b> Ни аккаунтов, ни установки,
-          ни платы.
-        </p>
-        <div class="row">
-          <button id="start" class="tag tag--action" type="button">
-            <span class="tag-label">Взять номерок</span>
-            <span class="tag-title">Позвонить</span>
-          </button>
-        </div>
-        <p class="footnote">
-          Звук и картинка идут между устройствами, минуя посредников.
-        </p>
-        <div class="row">
-          <button data-diagnostics class="btn btn--quiet" type="button">
-            Проверить связь
-          </button>
-        </div>
-      </section>
-
-      <section id="screen-join" hidden>
-        <h1 class="headline">Вас зовут поговорить</h1>
-        <p class="lede">
-          Номерок уже у вас — это ссылка, по которой вы пришли. Регистрация не
-          нужна, устанавливать ничего не надо.
-        </p>
-        <div class="row">
-          <button id="join" class="tag tag--action" type="button">
-            <span class="tag-label">Номерок при вас</span>
-            <span class="tag-title">Войти в разговор</span>
-          </button>
-        </div>
-        <p class="footnote">
-          После нажатия браузер спросит разрешение на камеру и микрофон.
-        </p>
-      </section>
-
-      <section id="screen-call" class="call" hidden>
-        <div id="invite">
-          <h2 class="headline">Отдайте номерок</h2>
-          <p class="lede">
-            Отправьте ссылку тем, кого зовёте, — любым способом. Кто перешёл,
-            тот и в разговоре.
+      <section id="screen-start" class="pane">
+        <p class="wordmark">созвон</p>
+        <div class="pane-body">
+          <h1 class="title">Поговорите<br />без регистрации</h1>
+          <p class="sub">
+            Нажмите — и получите ссылку. Кто по ней перейдёт, тот и в разговоре.
+            Аккаунт не нужен никому.
           </p>
-          <button data-copy class="tag tag--hung" type="button">
-            <span class="tag-label">Нажмите, чтобы скопировать</span>
-            <span data-link class="tag-code"></span>
+          <button id="start" class="act act--primary" type="button">Позвонить</button>
+        </div>
+        <footer class="pane-foot">
+          <span class="note">Звук и видео идут напрямую между устройствами</span>
+          <button data-diagnostics class="link" type="button">Проверить связь</button>
+        </footer>
+      </section>
+
+      <section id="screen-join" class="pane" hidden>
+        <p class="wordmark">созвон</p>
+        <div class="pane-body">
+          <h1 class="title">Вас зовут<br />поговорить</h1>
+          <p class="sub">
+            Ничего устанавливать не нужно, регистрация не требуется. После
+            нажатия браузер спросит разрешение на камеру и микрофон.
+          </p>
+          <button id="join" class="act act--primary" type="button">Войти в разговор</button>
+        </div>
+        <footer class="pane-foot">
+          <span class="note">Разговор не сохраняется и никуда не передаётся</span>
+        </footer>
+      </section>
+
+      <section id="screen-call" class="stage" hidden>
+        <video id="backdrop" class="backdrop" autoplay playsinline muted></video>
+
+        <div id="invite" class="invite">
+          <p class="invite-eyebrow">Ссылка на разговор</p>
+          <p id="link" class="invite-link"></p>
+          <button data-copy class="act act--primary act--icon" type="button">
+            <svg class="i i-idle"><use href="#i-copy" /></svg>
+            <svg class="i i-done"><use href="#i-check" /></svg>
+            <span data-copy-label>Скопировать ссылку</span>
           </button>
-          <p class="waiting" id="waiting">Жду, когда зайдут</p>
+          <p class="invite-state" id="waiting"><i class="pulse"></i>Жду, когда зайдут</p>
+          <p class="invite-quiet" id="quiet" hidden>
+            Каналы связи пока молчат. Попытки продолжаются — если так и не
+            выйдет, загляните в проверку связи.
+          </p>
         </div>
 
         <div id="tiles" class="tiles"></div>
 
-        <div class="controls">
-          <button id="mic" class="btn" type="button" aria-pressed="true">Микрофон</button>
-          <button id="cam" class="btn" type="button" aria-pressed="true">Камера</button>
-          <span class="spacer"></span>
-          <button data-copy class="tag tag--pocket" type="button" hidden>
-            <span data-link class="tag-code"></span>
-            <span>Скопировать</span>
+        <div class="dock">
+          <button id="mic" class="ctl" type="button" aria-pressed="true" aria-label="Микрофон">
+            <svg class="i i-on"><use href="#i-mic" /></svg>
+            <svg class="i i-off"><use href="#i-mic-off" /></svg>
           </button>
-          <button id="hangup" class="btn btn--leave" type="button">Положить трубку</button>
+          <button id="cam" class="ctl" type="button" aria-pressed="true" aria-label="Камера">
+            <svg class="i i-on"><use href="#i-cam" /></svg>
+            <svg class="i i-off"><use href="#i-cam-off" /></svg>
+          </button>
+          <button data-copy class="ctl ctl--copy" type="button" aria-label="Скопировать ссылку" hidden>
+            <svg class="i i-idle"><use href="#i-copy" /></svg>
+            <svg class="i i-done"><use href="#i-check" /></svg>
+          </button>
+          <button id="hangup" class="ctl ctl--leave" type="button" aria-label="Положить трубку">
+            <svg class="i"><use href="#i-leave" /></svg>
+          </button>
         </div>
       </section>
 
-      <section id="screen-failed" class="failed" hidden>
-        <h1 id="failed-title" class="headline"></h1>
-        <p id="failed-advice" class="lede"></p>
-        <div class="row">
-          <button id="retry" class="btn btn--brass" type="button">Попробовать снова</button>
-          <button data-diagnostics class="btn btn--quiet" type="button">Проверить связь</button>
+      <section id="screen-failed" class="pane" hidden>
+        <p class="wordmark">созвон</p>
+        <div class="pane-body">
+          <h1 id="failed-title" class="title"></h1>
+          <p id="failed-advice" class="sub"></p>
+          <button id="retry" class="act act--primary" type="button">Попробовать снова</button>
         </div>
+        <footer class="pane-foot">
+          <button data-diagnostics class="link" type="button">Проверить связь</button>
+        </footer>
       </section>
 
-      <section id="screen-diagnostics" hidden>
-        <h1 class="headline">Проверка связи</h1>
-        <div id="diagnostics-body" class="diag"></div>
-        <div class="row">
-          <button id="diagnostics-close" class="btn" type="button">Назад</button>
+      <section id="screen-diagnostics" class="pane pane--wide" hidden>
+        <p class="wordmark">созвон</p>
+        <div class="pane-body pane-body--top">
+          <h1 class="title title--sm">Проверка связи</h1>
+          <div id="diagnostics-body" class="diag"></div>
         </div>
+        <footer class="pane-foot">
+          <button id="diagnostics-close" class="act" type="button">Назад</button>
+        </footer>
       </section>
     </main>
     <script type="module" src="/src/main.js"></script>
