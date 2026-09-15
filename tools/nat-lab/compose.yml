@@ -35,6 +35,17 @@ services:
     sysctls: {net.ipv4.ip_forward: 1}
     command: sh -c "echo транзит поднят; sleep infinity"
 
+  turn:
+    build: .
+    container_name: nat-turn
+    networks: {nete: {ipv4_address: 172.30.2.11}}
+    cap_add: [NET_ADMIN]
+    environment:
+      # Ключ стенда — не секрет: он живёт только внутри опыта и никуда не
+      # уезжает. На настоящей машине ключ задаёт человек.
+      TURN_SECRET: стендовый-ключ-не-для-жизни
+    command: sh /lab/turn.sh
+
   stun:
     build: .
     container_name: nat-stun
