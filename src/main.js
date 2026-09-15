@@ -7,8 +7,6 @@ import {renderDiagnostics} from './ui/diagnostics.js';
 const app = document.querySelector('#app');
 
 let room = null;
-let micOn = true;
-let camOn = true;
 
 // Роль узнаём один раз, при загрузке страницы, — до того, как enter()
 // что-нибудь запишет в адрес. Дальше решаем по этому значению, а не по
@@ -25,20 +23,19 @@ const fail = error => {
 };
 
 const enter = async secret => {
-  // Сбрасываем на каждый новый звонок: иначе состояние переживает предыдущий
-  // разговор, и первое нажатие «Микрофон»/«Камера» может тайно переключить
-  // устаревшее false → true вместо настоящего выключения.
-  micOn = true;
-  camOn = true;
   location.hash = secret;
   showScreen(app, 'call');
   try {
     room = await createRoom({
       secret,
+      // Намерение по микрофону/камере целиком живёт в room.js (createRoom
+      // заводит его заново на каждый звонок) и приходит сюда через state —
+      // отдельной копии в main.js больше нет, поэтому её нечему рассогласовать
+      // с разметкой и нечего забыть сбросить между звонками.
       onChange: state =>
         renderCall(app.querySelector('#screen-call'), state, {
-          toggleMicrophone: () => room.setMicrophone((micOn = !micOn)),
-          toggleCamera: () => room.setCamera((camOn = !camOn)),
+          toggleMicrophone: () => room.setMicrophone(!state.mic),
+          toggleCamera: () => room.setCamera(!state.cam),
           hangUp: async () => {
             await room.leave();
             room = null;

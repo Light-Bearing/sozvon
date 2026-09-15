@@ -32,16 +32,14 @@ const tile = (id, stream, label, isSelf) => {
 const nameFor = (index, total) =>
   total > 1 ? `Собеседник ${index + 1}` : 'Собеседник';
 
-// Кнопка сама помнит своё состояние: обе стороны стартуют включёнными
-// и переключаются в одном обработчике, так что разойтись не могут.
-const bindToggle = (button, act) => {
-  button.onclick = () => {
-    act();
-    button.setAttribute(
-      'aria-pressed',
-      button.getAttribute('aria-pressed') === 'true' ? 'false' : 'true',
-    );
-  };
+// Кнопка ничего не помнит сама: её разметка выставляется из состояния
+// комнаты на каждой перерисовке, а клик только просит комнату переключить
+// намерение. Раньше кнопка сама решала, что показать после клика, — и на
+// втором звонке подряд (или сразу после смены состояния комнатой) первое
+// нажатие показывало ровно обратное тому, что происходило на самом деле.
+const bindToggle = (button, pressed, act) => {
+  button.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+  button.onclick = act;
 };
 
 const bindCopy = (container, link) => {
@@ -78,7 +76,15 @@ export const renderCall = (container, state, actions) => {
   container.querySelector('.tag--pocket').hidden = alone;
 
   bindCopy(container, state.link);
-  bindToggle(container.querySelector('#mic'), actions.toggleMicrophone);
-  bindToggle(container.querySelector('#cam'), actions.toggleCamera);
+  bindToggle(container.querySelector('#mic'), state.mic, actions.toggleMicrophone);
+
+  // На ступени без видео (state.step.videoFor === 'none', «голосовой режим»
+  // при большом числе участников) камеру всё равно держит выключенной
+  // лестница качества — кнопка, которая на вид работает, а на деле ничего
+  // не меняет, и есть тихая ложь: недоступность честнее показать явно.
+  const camButton = container.querySelector('#cam');
+  camButton.disabled = state.step.videoFor === 'none';
+  bindToggle(camButton, state.cam, actions.toggleCamera);
+
   container.querySelector('#hangup').onclick = actions.hangUp;
 };
