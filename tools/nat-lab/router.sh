@@ -3,6 +3,7 @@
 # Имена переменных латиницей: busybox sh кириллицу в именах не принимает.
 set -e
 KIND="$1"
+GW="$2"
 WAN=eth0
 
 # eth0 у роутеров — интерфейс в net0. Определяем по адресу, а не по имени:
@@ -10,6 +11,11 @@ WAN=eth0
 for i in $(ip -o link | awk -F': ' '{print $2}' | cut -d@ -f1 | grep -v lo); do
   if ip -4 addr show "$i" 2>/dev/null | grep -q 'inet 172.30.'; then WAN="$i"; fi
 done
+
+# Наружу — только через транзит: это и добавляет промежуточный узел, без
+# которого пакеты с коротким сроком жизни негде проверять.
+ip route del default 2>/dev/null || true
+ip route add default via "$GW"
 
 iptables -t nat -F
 if [ "$KIND" = "symmetric" ]; then

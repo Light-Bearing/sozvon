@@ -1,22 +1,22 @@
-# Стенд из двух трансляторов адресов. Нужен затем, что домашнюю сеть не
-# перенастроить под опыт, а без симметричного NAT проверить «веер» негде.
+# Стенд из двух трансляторов адресов с транзитом посередине.
 #
-#   peer-a ── router-a ──┐              ┌── router-b ── peer-b
-#   (за обычным домашним ├── net0 ──────┤   (за симметричным)
-#    роутером)           │  «интернет»  │
-#                        └──── stun ────┘
+#  peer-a ─ router-a ─┬─ netw ─┬─ transit ─┬─ nete ─┬─ router-b ─ peer-b
+#  (обычный домашний) │        │           │        │  (симметричный)
+#                     │        │           │        └─ stun
 #
-# router-a: обычный MASQUERADE. Порт снаружи сохраняется, впускает только
-#           с того адреса и порта, куда писали сами, — ровно как дома.
-# router-b: MASQUERADE --random-fully. Новый внешний порт на каждого
-#           получателя — то есть симметричный.
+# Транзит нужен не для красоты: без промежуточного узла нельзя честно
+# проверить пакеты с коротким сроком жизни. Они должны умирать ПО ДОРОГЕ,
+# а когда роутеры соседние, умирать негде.
 
 name: nat-lab
 
 networks:
-  net0:
-    name: nat-lab-net0
-    ipam: {config: [{subnet: 172.30.0.0/24}]}
+  netw:
+    name: nat-lab-netw
+    ipam: {config: [{subnet: 172.30.1.0/24}]}
+  nete:
+    name: nat-lab-nete
+    ipam: {config: [{subnet: 172.30.2.0/24}]}
   neta:
     name: nat-lab-neta
     ipam: {config: [{subnet: 172.31.0.0/24}]}
@@ -25,32 +25,42 @@ networks:
     ipam: {config: [{subnet: 172.32.0.0/24}]}
 
 services:
+  transit:
+    build: .
+    container_name: nat-transit
+    networks:
+      netw: {ipv4_address: 172.30.1.9}
+      nete: {ipv4_address: 172.30.2.9}
+    cap_add: [NET_ADMIN]
+    sysctls: {net.ipv4.ip_forward: 1}
+    command: sh -c "echo транзит поднят; sleep infinity"
+
   stun:
     build: .
     container_name: nat-stun
-    networks: {net0: {ipv4_address: 172.30.0.10}}
-    command: node /lab/stun.mjs
+    networks: {nete: {ipv4_address: 172.30.2.10}}
     cap_add: [NET_ADMIN]
+    command: sh -c "ip route del default 2>/dev/null; ip route add default via 172.30.2.9; node /lab/stun.mjs"
 
   router-a:
     build: .
     container_name: nat-router-a
     networks:
-      net0: {ipv4_address: 172.30.0.20}
+      netw: {ipv4_address: 172.30.1.20}
       neta: {ipv4_address: 172.31.0.2}
     cap_add: [NET_ADMIN]
     sysctls: {net.ipv4.ip_forward: 1}
-    command: sh /lab/router.sh cone
+    command: sh /lab/router.sh cone 172.30.1.9
 
   router-b:
     build: .
     container_name: nat-router-b
     networks:
-      net0: {ipv4_address: 172.30.0.21}
+      nete: {ipv4_address: 172.30.2.21}
       netb: {ipv4_address: 172.32.0.2}
     cap_add: [NET_ADMIN]
     sysctls: {net.ipv4.ip_forward: 1}
-    command: sh /lab/router.sh symmetric
+    command: sh /lab/router.sh cone 172.30.2.9
 
   peer-a:
     build: .
