@@ -1,0 +1,69 @@
+# Стенд из двух трансляторов адресов. Нужен затем, что домашнюю сеть не
+# перенастроить под опыт, а без симметричного NAT проверить «веер» негде.
+#
+#   peer-a ── router-a ──┐              ┌── router-b ── peer-b
+#   (за обычным домашним ├── net0 ──────┤   (за симметричным)
+#    роутером)           │  «интернет»  │
+#                        └──── stun ────┘
+#
+# router-a: обычный MASQUERADE. Порт снаружи сохраняется, впускает только
+#           с того адреса и порта, куда писали сами, — ровно как дома.
+# router-b: MASQUERADE --random-fully. Новый внешний порт на каждого
+#           получателя — то есть симметричный.
+
+name: nat-lab
+
+networks:
+  net0:
+    name: nat-lab-net0
+    ipam: {config: [{subnet: 172.30.0.0/24}]}
+  neta:
+    name: nat-lab-neta
+    ipam: {config: [{subnet: 172.31.0.0/24}]}
+  netb:
+    name: nat-lab-netb
+    ipam: {config: [{subnet: 172.32.0.0/24}]}
+
+services:
+  stun:
+    build: .
+    container_name: nat-stun
+    networks: {net0: {ipv4_address: 172.30.0.10}}
+    command: node /lab/stun.mjs
+    cap_add: [NET_ADMIN]
+
+  router-a:
+    build: .
+    container_name: nat-router-a
+    networks:
+      net0: {ipv4_address: 172.30.0.20}
+      neta: {ipv4_address: 172.31.0.2}
+    cap_add: [NET_ADMIN]
+    sysctls: {net.ipv4.ip_forward: 1}
+    command: sh /lab/router.sh cone
+
+  router-b:
+    build: .
+    container_name: nat-router-b
+    networks:
+      net0: {ipv4_address: 172.30.0.21}
+      netb: {ipv4_address: 172.32.0.2}
+    cap_add: [NET_ADMIN]
+    sysctls: {net.ipv4.ip_forward: 1}
+    command: sh /lab/router.sh symmetric
+
+  peer-a:
+    build: .
+    container_name: nat-peer-a
+    networks: {neta: {ipv4_address: 172.31.0.100}}
+    cap_add: [NET_ADMIN]
+    volumes: [./work:/work]
+    command: sh -c "ip route del default; ip route add default via 172.31.0.2; sleep infinity"
+
+  peer-b:
+    build: .
+    container_name: nat-peer-b
+    networks: {netb: {ipv4_address: 172.32.0.100}}
+    cap_add: [NET_ADMIN]
+    volumes: [./work:/work]
+    command: sh -c "ip route del default; ip route add default via 172.32.0.2; sleep infinity"
