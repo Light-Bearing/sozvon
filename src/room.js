@@ -42,9 +42,16 @@ export const createRoom = async ({
   // как надо.
   let quiet = false;
 
+  // Виды бед, о которых сообщили каналы: собеседник найден, а соединиться
+  // с ним не вышло (см. src/signal/trouble.js). Хранятся без повторов и без
+  // имён участников — экрану нужно назвать причину, а не перечислить, у кого
+  // именно она случилась.
+  let troubles = [];
+
   const state = () => ({
     link: secretToLink(secret),
     quiet,
+    troubles,
     step,
     self: media.current(),
     mic: microphoneWanted,
@@ -71,6 +78,10 @@ export const createRoom = async ({
         announce();
       },
       handlers: {
+        onTrouble: list => {
+          troubles = [...new Set(list.map(({kind}) => kind))];
+          announce();
+        },
         onPeerJoin: peerId => {
           peers.set(peerId, null);
           announce();

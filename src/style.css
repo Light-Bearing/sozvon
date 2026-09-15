@@ -379,6 +379,28 @@ body {
 
 @keyframes breathe { 50% { opacity: 0.25; } }
 
+/* Не тревога, а сообщение: попытки соединиться продолжаются, поэтому
+   полоса сбоку приглушена, а не горит. */
+.invite-trouble {
+  margin-block-start: 1rem;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 2px solid color-mix(in oklab, var(--leave) 55%, transparent);
+}
+
+.invite-trouble-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.invite-trouble-advice {
+  margin: 0.3rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--dim);
+}
+
 /* ── кнопки звонка ──────────────────────────────────────── */
 
 .dock {

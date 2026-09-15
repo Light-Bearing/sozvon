@@ -8,6 +8,8 @@
 // картинки плитка темнеет и показывает инициал (см. hasPicture() ниже и
 // .tile--dark в style.css), а фон остаётся своим спокойным градиентом.
 
+import {explainTrouble} from './screens.js';
+
 const hasPicture = stream => stream?.getVideoTracks().some(track => track.enabled);
 
 const tile = (id, stream, label, isSelf) => {
@@ -83,13 +85,28 @@ export const renderCall = (container, state, actions) => {
     ),
   );
 
+  // Беда с соединением — единственное, что может вывести карточку обратно
+  // на экран, когда собеседники уже есть: если к кому-то не достучаться,
+  // ссылка нужна тут же, под объяснением.
+  const trouble = state.troubles?.[0];
+
   container.querySelector('#link').textContent = state.link;
-  container.querySelector('#invite').hidden = !alone;
+  container.querySelector('#invite').hidden = !alone && !trouble;
   container.querySelector('.ctl--copy').hidden = alone;
 
+  const troubleBox = container.querySelector('#trouble');
+  troubleBox.hidden = !trouble;
+  if (trouble) {
+    const {title, advice} = explainTrouble(trouble);
+    container.querySelector('#trouble-title').textContent = title;
+    container.querySelector('#trouble-advice').textContent = advice;
+  }
+
   // Каналы молчат — говорим об этом, но звонок не прерываем: попытки идут.
-  container.querySelector('#waiting').hidden = Boolean(state.quiet);
-  container.querySelector('#quiet').hidden = !state.quiet;
+  // Названная беда важнее обоих: она объясняет ровно то, чего ждать уже
+  // бессмысленно.
+  container.querySelector('#waiting').hidden = Boolean(state.quiet || trouble);
+  container.querySelector('#quiet').hidden = !state.quiet || Boolean(trouble);
 
   bindCopy(container, state.link);
   bindToggle(container.querySelector('#mic'), state.mic, actions.toggleMicrophone);

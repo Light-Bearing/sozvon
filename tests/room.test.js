@@ -670,3 +670,44 @@ describe('передача параметра семейств дальше в c
     await room.leave();
   });
 });
+
+// Провал льда не производит ни одного события Trystero: onPeerJoin ждёт
+// открытого канала данных, которого не будет. Без этой ветки экран показывал
+// «Жду, когда зайдут» бесконечно, хотя собеседник был найден.
+describe('беда с прямым путём доходит до состояния', () => {
+  it('без жалоб список пуст', async () => {
+    const {room} = await openRoom();
+
+    expect(room.state().troubles).toEqual([]);
+  });
+
+  it('жалоба каналов попадает в состояние и объявляется наверх', async () => {
+    const {room, connection, onChange} = await openRoom();
+    onChange.mockClear();
+
+    connection.handlers.onTrouble([{peerId: 'петя', kind: 'no-path'}]);
+
+    expect(room.state().troubles).toEqual(['no-path']);
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('одинаковая беда у двоих названа один раз', async () => {
+    const {room, connection} = await openRoom();
+
+    connection.handlers.onTrouble([
+      {peerId: 'петя', kind: 'no-path'},
+      {peerId: 'вася', kind: 'no-path'},
+    ]);
+
+    expect(room.state().troubles).toEqual(['no-path']);
+  });
+
+  it('снятая жалоба очищает состояние', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onTrouble([{peerId: 'петя', kind: 'no-path'}]);
+
+    connection.handlers.onTrouble([]);
+
+    expect(room.state().troubles).toEqual([]);
+  });
+});

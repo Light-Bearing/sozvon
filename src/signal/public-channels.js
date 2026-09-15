@@ -3,6 +3,7 @@ import {joinRoom as joinNostr, getRelaySockets as nostrSockets} from '@trystero-
 import {joinRoom as joinMqtt, getRelaySockets as mqttSockets} from '@trystero-p2p/mqtt';
 import {createPeerRegistry} from './dedupe.js';
 import {relayUrlsFor} from './relays.js';
+import {troubleFrom} from './trouble.js';
 
 export const APP_ID = 'sozvon';
 
@@ -46,6 +47,16 @@ export const joinPublicChannels = ({roomId, password, handlers, families = FAMIL
   // на приёме мы не привередничаем, откуда, лишь бы не повторялось.
   const streamedPeers = new Set();
 
+  // Собеседники, которых канал нашёл, а соединиться с ними не вышло.
+  // Ключ — участник, значение — вид беды из trouble.js. Пока этого не было,
+  // неудача выглядела как бесконечное «жду, когда зайдут»: onPeerJoin
+  // срабатывает только на открытом канале данных, поэтому провал льда не
+  // производил вообще никаких событий и экран честно ничего не знал.
+  const troubles = new Map();
+
+  const tellTroubles = () =>
+    handlers.onTrouble?.([...troubles].map(([peerId, kind]) => ({peerId, kind})));
+
   // Поток, который раздаёт приложение. Храним, чтобы отправить его и
   // новым участникам (при claim), и участнику, у которого сменился
   // владелец (см. «призрак» в onPeerLeave).
@@ -56,9 +67,25 @@ export const joinPublicChannels = ({roomId, password, handlers, families = FAMIL
     const room = join(
       {appId: APP_ID, password, relayConfig: {urls: relays}},
       roomId,
+      {
+        onJoinError: ({peerId, error}) => {
+          // На вошедшего жаловаться не на что: у него как раз получилось.
+          if (registry.ownerOf(peerId)) return;
+          const kind = troubleFrom(error);
+          // Ту же беду обычно приносят все три семейства подряд — наверх
+          // сообщаем только о смене, а не о каждом повторе.
+          if (troubles.get(peerId) === kind) return;
+          troubles.set(peerId, kind);
+          tellTroubles();
+        },
+      },
     );
 
     room.onPeerJoin = peerId => {
+      // Вошёл — значит, беда кончилась, каким бы семейством он ни вошёл:
+      // снимаем жалобу до разбора владения, иначе она осталась бы висеть
+      // при входе через не-владельца.
+      if (troubles.delete(peerId)) tellTroubles();
       if (!registry.claim(peerId, family)) return;
       if (localStream) room.addStream(localStream, {target: peerId});
       handlers.onPeerJoin?.(peerId);
@@ -182,6 +209,7 @@ export const joinPublicChannels = ({roomId, password, handlers, families = FAMIL
         const aliveCount = relays.filter(url => sockets[url]?.readyState === SOCKET_OPEN).length;
         return {family, relays, aliveCount, alive: aliveCount > 0};
       }),
+    troubles: () => [...troubles].map(([peerId, kind]) => ({peerId, kind})),
     leave: () => Promise.all(everyRoom(room => room.leave())),
   };
 };

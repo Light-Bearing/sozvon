@@ -52,6 +52,9 @@ const createFakeRoom = () => {
 
   return {
     room,
+    // Третий довод joinRoom — обратные вызовы библиотеки. Комнату заводит
+    // public-channels.js, поэтому тест добирается до них через эту ссылку.
+    callbacks: null,
     addStreamCalls,
     addTrackCalls,
     removeTrackCalls,
@@ -81,7 +84,10 @@ describe('публичные каналы: адресная доставка', (
     fakes = Object.fromEntries(FAMILY_NAMES.map(name => [name, createFakeRoom()]));
     const families = FAMILY_NAMES.map(family => ({
       family,
-      join: () => fakes[family].room,
+      join: (_config, _roomId, callbacks) => {
+        fakes[family].callbacks = callbacks;
+        return fakes[family].room;
+      },
       // Читает fakes[family].sockets заново при каждом вызове — тест может
       // поменять его после того, как connection уже создан.
       getRelaySockets: () => fakes[family].sockets,
@@ -90,6 +96,7 @@ describe('публичные каналы: адресная доставка', (
       onPeerJoin: vi.fn(),
       onPeerLeave: vi.fn(),
       onPeerStream: vi.fn(),
+      onTrouble: vi.fn(),
     };
     connection = joinPublicChannels({roomId: 'r', password: 'p', handlers, families});
   });
@@ -360,5 +367,88 @@ describe('familiesFor', () => {
 
   it('все имена неизвестны — пустой список семейств, а не полный набор по умолчанию', () => {
     expect(familiesFor(['неведомое'], ALL)).toEqual([]);
+  });
+});
+
+// Пока библиотека молча не могла соединиться, экран показывал «Жду, когда
+// зайдут» до скончания века — хотя собеседник был найден, описания
+// соединения разошлись, и не сложился только прямой путь. Эти жалобы
+// библиотека отдаёт третьим доводом joinRoom, и теперь они доходят наверх.
+describe('публичные каналы: жалобы на неудачу', () => {
+  let fakes;
+  let handlers;
+  let connection;
+
+  const complain = (family, error, peerId = 'петя') =>
+    fakes[family].callbacks.onJoinError({error, peerId, appId: 'sozvon', roomId: 'r'});
+
+  beforeEach(() => {
+    fakes = Object.fromEntries(FAMILY_NAMES.map(name => [name, createFakeRoom()]));
+    const families = FAMILY_NAMES.map(family => ({
+      family,
+      join: (_config, _roomId, callbacks) => {
+        fakes[family].callbacks = callbacks;
+        return fakes[family].room;
+      },
+      getRelaySockets: () => fakes[family].sockets,
+    }));
+    handlers = {onPeerJoin: vi.fn(), onTrouble: vi.fn()};
+    connection = joinPublicChannels({roomId: 'r', password: 'p', handlers, families});
+  });
+
+  const NO_PATH = 'could not connect to peer петя after exchanging SDP; configure TURN servers';
+
+  it('жалоба доходит наверх опознанной', () => {
+    complain('torrent', NO_PATH);
+
+    expect(handlers.onTrouble).toHaveBeenCalledWith([{peerId: 'петя', kind: 'no-path'}]);
+  });
+
+  it('одна и та же беда от трёх семейств — одно сообщение, а не три', () => {
+    complain('torrent', NO_PATH);
+    complain('nostr', NO_PATH);
+    complain('mqtt', NO_PATH);
+
+    expect(handlers.onTrouble).toHaveBeenCalledTimes(1);
+  });
+
+  it('вошедший собеседник отменяет жалобу на себя', () => {
+    complain('torrent', NO_PATH);
+    handlers.onTrouble.mockClear();
+
+    fakes.nostr.join('петя');
+
+    expect(handlers.onTrouble).toHaveBeenCalledWith([]);
+  });
+
+  it('на уже вошедшего не жалуемся: у него всё получилось', () => {
+    fakes.torrent.join('петя');
+    handlers.onTrouble.mockClear();
+
+    complain('nostr', NO_PATH);
+
+    expect(handlers.onTrouble).not.toHaveBeenCalled();
+  });
+
+  it('разные собеседники — разные жалобы', () => {
+    complain('torrent', NO_PATH, 'петя');
+    complain('nostr', 'handshake timed out after 15000ms', 'вася');
+
+    expect(handlers.onTrouble).toHaveBeenLastCalledWith([
+      {peerId: 'петя', kind: 'no-path'},
+      {peerId: 'вася', kind: 'handshake'},
+    ]);
+  });
+
+  it('ушедший собеседник уносит свою жалобу с собой', () => {
+    fakes.torrent.join('петя');
+    fakes.torrent.leave('петя');
+    complain('torrent', NO_PATH);
+    handlers.onTrouble.mockClear();
+
+    fakes.torrent.join('петя');
+
+    expect(handlers.onTrouble).toHaveBeenCalledWith([]);
+    expect(connection.troubles()).toEqual([]);
   });
 });

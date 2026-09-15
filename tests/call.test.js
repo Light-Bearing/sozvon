@@ -1,31 +1,20 @@
 // @vitest-environment jsdom
+import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
 import {describe, expect, it, vi} from 'vitest';
 import {renderCall} from '../src/ui/call.js';
 import {STEPS} from '../src/ladder.js';
 
-// Урезанная разметка экрана звонка — ровно то подмножество #screen-call из
-// index.html, которое трогает renderCall().
-const root = () => {
-  const el = document.createElement('div');
-  el.innerHTML = `
-    <video id="backdrop" class="backdrop"></video>
-    <div id="invite" class="invite">
-      <p id="link" class="invite-link"></p>
-      <button data-copy class="act act--primary act--icon" type="button">
-        <span data-copy-label>Скопировать ссылку</span>
-      </button>
-      <p class="invite-state" id="waiting">Жду, когда зайдут</p>
-      <p class="invite-quiet" id="quiet" hidden></p>
-    </div>
-    <div id="tiles" class="tiles"></div>
-    <div class="dock">
-      <button id="mic" class="ctl" type="button"></button>
-      <button id="cam" class="ctl" type="button"></button>
-      <button data-copy class="ctl ctl--copy" type="button" hidden></button>
-      <button id="hangup" class="ctl ctl--leave" type="button"></button>
-    </div>`;
-  return el;
-};
+// Разметку берём из настоящего index.html, а не переписываем от руки:
+// рукописная копия уже однажды отстала от оригинала, и тест проходил на
+// разметке, которой в приложении нет. Здесь же отсутствующий узел валит
+// тест сразу — как и должно быть.
+// В jsdom-окружении import.meta.url — адрес http, а не file, поэтому путь
+// считаем от корня проекта: vitest запускается именно из него.
+const HTML = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
+
+const root = () =>
+  new DOMParser().parseFromString(HTML, 'text/html').querySelector('#screen-call');
 
 const baseState = (overrides = {}) => ({
   link: 'https://sozvon.test/#секрет-теста',
@@ -34,6 +23,7 @@ const baseState = (overrides = {}) => ({
   mic: true,
   cam: true,
   peers: [],
+  troubles: [],
   ...overrides,
 });
 
@@ -121,5 +111,49 @@ describe('state.step управляет доступностью кнопки к
       renderCall(el, baseState({step}), fakeActions());
       expect(el.querySelector('#mic').disabled).toBe(false);
     }
+  });
+});
+
+// Провал прямого соединения не производит ни одного события библиотеки:
+// без этой ветки экран показывал «Жду, когда зайдут» бесконечно.
+describe('беда со связью названа на экране', () => {
+  it('без беды карточка беды спрятана, а «жду» на месте', () => {
+    const el = root();
+    renderCall(el, baseState(), fakeActions());
+
+    expect(el.querySelector('#trouble').hidden).toBe(true);
+    expect(el.querySelector('#waiting').hidden).toBe(false);
+  });
+
+  it('беда вытесняет и «жду», и «каналы молчат»', () => {
+    const el = root();
+    renderCall(el, baseState({quiet: true, troubles: ['no-path']}), fakeActions());
+
+    expect(el.querySelector('#trouble').hidden).toBe(false);
+    expect(el.querySelector('#waiting').hidden).toBe(true);
+    expect(el.querySelector('#quiet').hidden).toBe(true);
+    expect(el.querySelector('#trouble-title').textContent).toContain('канал к нему');
+    expect(el.querySelector('#trouble-advice').textContent).toContain('раздача интернета');
+  });
+
+  it('карточка со ссылкой возвращается, даже когда собеседники уже есть', () => {
+    const el = root();
+    const peers = [{peerId: 'петя', stream: null}];
+
+    renderCall(el, baseState({peers}), fakeActions());
+    expect(el.querySelector('#invite').hidden).toBe(true);
+
+    renderCall(el, baseState({peers, troubles: ['no-path']}), fakeActions());
+    expect(el.querySelector('#invite').hidden).toBe(false);
+  });
+
+  it('ушедшая беда снова прячет карточку', () => {
+    const el = root();
+    renderCall(el, baseState({troubles: ['no-path']}), fakeActions());
+
+    renderCall(el, baseState({troubles: []}), fakeActions());
+
+    expect(el.querySelector('#trouble').hidden).toBe(true);
+    expect(el.querySelector('#waiting').hidden).toBe(false);
   });
 });

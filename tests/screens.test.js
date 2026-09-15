@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {describe, expect, it} from 'vitest';
-import {explainFailure, showScreen} from '../src/ui/screens.js';
+import {explainFailure, explainTrouble, showScreen} from '../src/ui/screens.js';
 
 const root = () => {
   const el = document.createElement('div');
@@ -61,5 +61,23 @@ describe('объяснение неудачи', () => {
 
   it('пустая ошибка не роняет объяснение', () => {
     expect(() => explainFailure(undefined)).not.toThrow();
+  });
+});
+
+describe('объяснение беды со связью', () => {
+  it('нет прямого пути — называем сеть и даём рабочий совет', () => {
+    const {title, advice} = explainTrouble('no-path');
+
+    expect(title).toBe('Собеседник нашёлся, а канал к нему — нет');
+    expect(advice).toContain('раздача интернета');
+  });
+
+  it('чужой ключ — просим прислать ссылку целиком', () => {
+    expect(explainTrouble('wrong-key').advice).toContain('после решётки');
+  });
+
+  it('незнакомая беда не притворяется знакомой', () => {
+    expect(explainTrouble('unknown').title).toBe('Соединиться с собеседником не вышло');
+    expect(explainTrouble(undefined).title).toBe('Соединиться с собеседником не вышло');
   });
 });
