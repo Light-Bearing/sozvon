@@ -89,4 +89,35 @@ describe('спуск и подъём по связи', () => {
     expect(ladder.update({peerCount: 20, loss: 0.5, queueSeconds: 5}).name)
       .toBe(STEPS.at(-1).name);
   });
+
+  // Находка 3: раньше счётчик penalty ничем не был ограничен сверху — только
+  // итоговая ступень (Math.min(base + penalty, STEPS.length - 1)). Долгая
+  // просадка копила «долг» намного больше, чем нужно было для нижней
+  // ступени, а подниматься обратно можно только по одной ступени за
+  // HEALTH.goodForMs. Итог на живом модуле: минута плохой связи вдвоём
+  // опускала до voice, а обратный подъём занимал 4,7 минуты идеальной сети.
+  it('долгая просадка не копит лишний «долг»: подъём наверх укладывается ровно в (STEPS.length - 1) окон спокойствия', () => {
+    const clock = fakeClock();
+    const ladder = createLadder({now: clock.now});
+
+    // Связь плохая куда дольше, чем нужно, чтобы дойти до самой нижней
+    // ступени (для двоих это происходит уже за 3 * badForMs).
+    for (let i = 0; i < 20; i++) {
+      ladder.update({peerCount: 2, loss: 0.5, queueSeconds: 0});
+      clock.advance(HEALTH.badForMs);
+    }
+    expect(ladder.update({peerCount: 2, loss: 0.5, queueSeconds: 0}).name).toBe('voice');
+
+    // Дальше сеть ровная. Без потолка счётчика на возврат наверх ушло бы
+    // куда больше, чем STEPS.length - 1 окон, — «долг» был не в 3, а в разы
+    // больше. С потолком ровно (STEPS.length - 1) окон уже возвращает на
+    // самый верх, ни одним раньше и ни одним позже не нужно.
+    let last;
+    for (let i = 0; i < STEPS.length - 1; i++) {
+      ladder.update({peerCount: 2, loss: 0, queueSeconds: 0}); // взводит окно спокойствия
+      clock.advance(HEALTH.goodForMs);
+      last = ladder.update({peerCount: 2, loss: 0, queueSeconds: 0}); // подтверждает декремент
+    }
+    expect(last.name).toBe('full');
+  });
 });
