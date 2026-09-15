@@ -5,7 +5,7 @@ import {createLadder, stepForPeers} from './ladder.js';
 import {createMedia, setMaxBitrate} from './media.js';
 import {connect} from './signal/index.js';
 import {secretToLink} from './room-secret.js';
-import {summarizeStats} from './stats.js';
+import {createStatsTracker} from './stats.js';
 import {createSpeakingTracker, levelFrom} from './speaking.js';
 
 const STATS_EVERY_MS = 2_000;
@@ -20,10 +20,23 @@ export const createRoom = async ({
   const peers = new Map();
   let step = stepForPeers(1);
 
+  // Намерение человека — и только человека: меняется исключительно из
+  // setCamera()/setMicrophone() ниже, свежее на каждый новый звонок (это
+  // локальные переменные createRoom, а не что-то живущее в main.js между
+  // звонками). Единственная запись дорожек в media происходит в
+  // applyDesiredMedia() — там же, где намерение сверяется со ступенью.
+  // Раньше такт лестницы переписывал video.enabled сам, без оглядки на
+  // то, что человек только что нажал «Камера», — через две секунды нажатие
+  // тихо отменялось.
+  let cameraWanted = true;
+  let microphoneWanted = true;
+
   const state = () => ({
     link: secretToLink(secret),
     step,
     self: media.current(),
+    mic: microphoneWanted,
+    cam: cameraWanted,
     peers: [...peers.entries()].map(([peerId, stream]) => ({peerId, stream})),
   });
 
@@ -71,6 +84,12 @@ export const createRoom = async ({
 
     // Свой уровень звука меряем локально и рассылаем остальным.
     audio = new AudioContext();
+    // Создаётся уже после await'ов выше — то есть вне жеста человека, а по
+    // правилам браузеров такой AudioContext может родиться приостановленным.
+    // Тогда анализатор молча читает нули, tracker.report(SELF, …) не
+    // срабатывает, и на ступени «видео у говорящего» камера этого человека
+    // будет выключена весь звонок — и никто не скажет почему.
+    if (audio.state === 'suspended') await audio.resume();
     const analyser = audio.createAnalyser();
     analyser.fftSize = 512;
     audio.createMediaStreamSource(stream).connect(analyser);
@@ -104,22 +123,48 @@ export const createRoom = async ({
     }
   };
 
+  // Разрешает ли текущая ступень видео от ЭТОГО человека — без оглядки на
+  // то, хочет ли он сам его показывать. 'all' — разрешает всем, 'speaker' —
+  // только тому, кто сейчас говорит, 'none' (ступень 'voice') — никому и
+  // никогда. Раньше эту ветку никто не обрабатывал вовсе, и камера на
+  // 'voice' оставалась в том состоянии, в каком была до перехода.
+  const cameraAllowed = () => {
+    if (step.videoFor === 'all') return true;
+    if (step.videoFor === 'speaker') return tracker.speaker() === SELF;
+    return false;
+  };
+
+  // Единственное место, где решается, что в итоге происходит с камерой и
+  // микрофоном. Раньше запись в media.setCamera() была рассыпана по
+  // нескольким местам (кнопка человека, лестница качества, определение
+  // говорящего) — писали трое, и итог зависел от того, кто писал последним.
+  // Теперь пишет только эта функция, и итог всегда один и тот же расчёт:
+  // микрофон — как хочет человек (ступень его не ограничивает, звук всегда
+  // всем); камера — как хочет человек, и только если ступень это позволяет.
+  const applyDesiredMedia = () => {
+    media.setMicrophone(microphoneWanted);
+    media.setCamera(cameraWanted && cameraAllowed());
+  };
+
   const applyStep = async next => {
     const changed = next.name !== step.name;
     step = next;
-    // Камеру перенастраиваем и экран перерисовываем только при настоящей
-    // смене ступени — иначе на каждом такте (каждые 2 с) шло бы вхолостую.
+    // Разрешение по ступени (ширина/высота) перенастраиваем и экран
+    // перерисовываем только при настоящей смене ступени — иначе на каждом
+    // такте (каждые 2 с) шло бы вхолостую.
     if (changed) await media.applyStep(step);
     await applyBitrateCeiling();
-    // На ступени «видео у говорящего» картинку шлёт только тот, кто говорит.
-    // Вне проверки на смену ступени намеренно: говорящий меняется часто,
-    // а ступень — редко. Внутри `if (changed)` решение пересматривалось бы
-    // раз в несколько минут вместо каждого такта, и камера не успевала бы
-    // за разговором.
-    if (step.videoFor === 'speaker') media.setCamera(tracker.speaker() === SELF);
-    else if (step.videoFor === 'all') media.setCamera(true);
+    // А вот итог по камере/микрофону пересчитываем каждый такт безусловно:
+    // говорящий на ступени 'speaker' меняется часто, а ступень — редко.
+    // Внутри `if (changed)` решение пересматривалось бы раз в несколько
+    // минут вместо каждого такта, и камера не успевала бы за разговором.
+    applyDesiredMedia();
     if (changed) announce();
   };
+
+  // Живёт всё время звонка — приращение между тактами считается от
+  // прошлого снимка этого же трекера, а не с нуля на каждый такт.
+  const stats = createStatsTracker();
 
   const tick = async () => {
     const reports = [];
@@ -131,7 +176,7 @@ export const createRoom = async ({
         // для всех остальных — просто пропускаем его в этот раз.
       }
     }
-    const {loss, queueSeconds} = summarizeStats(reports);
+    const {loss, queueSeconds} = stats.summarize(reports);
     await applyStep(ladder.update({peerCount: peers.size + 1, loss, queueSeconds}));
   };
 
@@ -139,8 +184,19 @@ export const createRoom = async ({
 
   return {
     state,
-    setMicrophone: on => media.setMicrophone(on),
-    setCamera: on => media.setCamera(on),
+    // Единственное место, где cameraWanted/microphoneWanted меняются. Сразу
+    // же применяем к дорожкам и объявляем новое состояние — человек должен
+    // увидеть эффект нажатия немедленно, а не ждать ближайшего такта лестницы.
+    setMicrophone: on => {
+      microphoneWanted = on;
+      applyDesiredMedia();
+      announce();
+    },
+    setCamera: on => {
+      cameraWanted = on;
+      applyDesiredMedia();
+      announce();
+    },
     leave: async () => {
       clearInterval(timer);
       clearInterval(listener);

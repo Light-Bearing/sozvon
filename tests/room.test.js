@@ -1,13 +1,17 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {createRoom} from '../src/room.js';
-import {createLadder, stepForPeers} from '../src/ladder.js';
+import {createLadder, stepForPeers, STEPS} from '../src/ladder.js';
 
 // createRoom.state() зовёт secretToLink() без базы — та берёт глобальный
 // location, которого в узловом окружении vitest (без jsdom) нет. Содержимое
 // ссылки в этих тестах не проверяется, поэтому достаточно минимальной
 // подстановки, лишь бы announce() не падал.
 beforeEach(() => {
-  globalThis.location = {origin: 'https://sozvon.test', pathname: '/'};
+  globalThis.location = {
+    origin: 'https://sozvon.test',
+    pathname: '/',
+    href: 'https://sozvon.test/',
+  };
   vi.useFakeTimers();
 });
 
@@ -217,5 +221,192 @@ describe('завершение звонка', () => {
     await vi.advanceTimersByTimeAsync(STATS_EVERY_MS * 5);
 
     expect(ladder.update).toHaveBeenCalledTimes(callsAtLeave); // не растёт — таймер остановлен
+  });
+});
+
+// Находка 1: тремя местами писали в media.setCamera() — человек кнопкой,
+// лестница качества и определение говорящего. Единого хозяина не было, и
+// на ступенях 'full'/'small' (videoFor: 'all' — обычный звонок вдвоём-
+// вчетвером) такт безусловно переустанавливал камеру, отменяя нажатие
+// человека уже через одно и то же 2-секундное деление STATS_EVERY_MS.
+describe('намерение человека — единый хозяин камеры и микрофона', () => {
+  it('такт не включает камеру обратно после того, как человек её выключил (ступень full)', async () => {
+    const ladder = fakeLadder([FULL, FULL, FULL]);
+    const {room, media} = await openRoom({ladder});
+
+    room.setCamera(false);
+    expect(media.setCamera).toHaveBeenLastCalledWith(false);
+
+    // Раньше здесь, на такте, applyStep безусловно вызывал
+    // media.setCamera(true) для videoFor: 'all' — вот она, находка 1.
+    await vi.advanceTimersByTimeAsync(STATS_EVERY_MS);
+    expect(media.setCamera).toHaveBeenLastCalledWith(false);
+
+    await vi.advanceTimersByTimeAsync(STATS_EVERY_MS);
+    expect(media.setCamera).toHaveBeenLastCalledWith(false);
+
+    await room.leave();
+  });
+
+  it('такт не включает камеру обратно и на ступени small (тоже videoFor: all)', async () => {
+    const ladder = fakeLadder([SMALL, SMALL]);
+    const {room, media} = await openRoom({ladder});
+
+    await vi.advanceTimersByTimeAsync(STATS_EVERY_MS); // смена full → small
+    room.setCamera(false);
+
+    await vi.advanceTimersByTimeAsync(STATS_EVERY_MS);
+    expect(media.setCamera).toHaveBeenLastCalledWith(false);
+
+    await room.leave();
+  });
+
+  it('человек передумал и включил камеру обратно — такт это не отменяет', async () => {
+    const ladder = fakeLadder([FULL, FULL]);
+    const {room, media} = await openRoom({ladder});
+
+    room.setCamera(false);
+    room.setCamera(true);
+    expect(media.setCamera).toHaveBeenLastCalledWith(true);
+
+    await vi.advanceTimersByTimeAsync(STATS_EVERY_MS);
+    expect(media.setCamera).toHaveBeenLastCalledWith(true);
+
+    await room.leave();
+  });
+
+  it('на ступени voice (videoFor: none) камера выключена, даже если человек её хочет', async () => {
+    const VOICE = STEPS.at(-1);
+    expect(VOICE.videoFor).toBe('none'); // на случай, если состав STEPS поменяют
+
+    const ladder = fakeLadder([VOICE]);
+    const {room, media} = await openRoom({ladder});
+
+    // cameraWanted остаётся true по умолчанию — человек ничего не нажимал.
+    await vi.advanceTimersByTimeAsync(STATS_EVERY_MS);
+    expect(media.setCamera).toHaveBeenLastCalledWith(false);
+
+    await room.leave();
+  });
+
+  it('setMicrophone так же не переопределяется тактом лестницы', async () => {
+    const ladder = fakeLadder([FULL, FULL]);
+    const {room, media} = await openRoom({ladder});
+
+    room.setMicrophone(false);
+    await vi.advanceTimersByTimeAsync(STATS_EVERY_MS);
+
+    expect(media.setMicrophone).toHaveBeenLastCalledWith(false);
+
+    await room.leave();
+  });
+
+  it('нажатие кнопки объявляет новое состояние немедленно, не дожидаясь такта', async () => {
+    const {room, onChange} = await openRoom();
+    onChange.mockClear();
+
+    room.setCamera(false);
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0][0].cam).toBe(false);
+  });
+
+  // Находка 2 со стороны room.js: state() должен нести намерение по камере
+  // и микрофону — иначе интерфейсу физически нечем нарисовать aria-pressed
+  // по правде (см. tests/call.test.js).
+  it('state() отдаёт текущее намерение по камере и микрофону', async () => {
+    const {room} = await openRoom();
+
+    expect(room.state().cam).toBe(true);
+    expect(room.state().mic).toBe(true);
+
+    room.setCamera(false);
+    expect(room.state().cam).toBe(false);
+
+    room.setMicrophone(false);
+    expect(room.state().mic).toBe(false);
+
+    await room.leave();
+  });
+});
+
+// Находка 6: AudioContext создавался после await'ов, то есть вне жеста
+// человека, и по правилам браузеров мог родиться приостановленным. Тогда
+// анализатор молча читает нули, tracker.report(SELF, …) не срабатывает,
+// tracker.speaker() === SELF всегда ложь — и на ступени «видео у говорящего»
+// камера этого человека выключена весь звонок, без единого объяснения.
+//
+// fakeConnection() из остальных тестов файла нарочно без action() — этот
+// путь в room.js рассчитан на то, что action()/AudioContext иногда
+// недоступны вовсе (см. комментарий в src/room.js), и большинство тестов
+// это проверяет неявно, просто не подсовывая ни то, ни другое. Здесь —
+// обратный случай: оба доступны, и оба должны быть использованы правильно.
+describe('измерение уровня звука не должно молчать (AudioContext)', () => {
+  it('возобновляет AudioContext, если браузер создал его приостановленным', async () => {
+    const resume = vi.fn().mockResolvedValue(undefined);
+    class FakeAudioContext {
+      constructor() {
+        this.state = 'suspended';
+        this.resume = resume;
+      }
+      createAnalyser() {
+        return {fftSize: 0, connect: () => {}, getFloatTimeDomainData: () => {}};
+      }
+      createMediaStreamSource() {
+        return {connect: () => {}};
+      }
+      close() {
+        return Promise.resolve();
+      }
+    }
+    const previousAudioContext = globalThis.AudioContext;
+    globalThis.AudioContext = FakeAudioContext;
+
+    try {
+      const connection = fakeConnection();
+      connection.action = vi.fn(() => ({onMessage: null, send: vi.fn().mockResolvedValue(undefined)}));
+
+      const {room} = await openRoom({connection});
+
+      expect(resume).toHaveBeenCalledTimes(1);
+
+      await room.leave();
+    } finally {
+      globalThis.AudioContext = previousAudioContext;
+    }
+  });
+
+  it('не трогает resume(), если AudioContext создался уже запущенным', async () => {
+    const resume = vi.fn().mockResolvedValue(undefined);
+    class FakeAudioContext {
+      constructor() {
+        this.state = 'running';
+        this.resume = resume;
+      }
+      createAnalyser() {
+        return {fftSize: 0, connect: () => {}, getFloatTimeDomainData: () => {}};
+      }
+      createMediaStreamSource() {
+        return {connect: () => {}};
+      }
+      close() {
+        return Promise.resolve();
+      }
+    }
+    const previousAudioContext = globalThis.AudioContext;
+    globalThis.AudioContext = FakeAudioContext;
+
+    try {
+      const connection = fakeConnection();
+      connection.action = vi.fn(() => ({onMessage: null, send: vi.fn().mockResolvedValue(undefined)}));
+
+      const {room} = await openRoom({connection});
+
+      expect(resume).not.toHaveBeenCalled();
+
+      await room.leave();
+    } finally {
+      globalThis.AudioContext = previousAudioContext;
+    }
   });
 });
