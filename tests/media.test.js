@@ -158,3 +158,147 @@ describe('потолок битрейта', () => {
     expect(sender.setParameters).not.toHaveBeenCalled();
   });
 });
+
+// Человек входит в разговор без камеры и микрофона и включает их сам —
+// captureMicrophone()/captureCamera() просят браузер ровно об одном виде
+// медиа за раз, а release*() по-настоящему освобождают устройство
+// (track.stop()), а не просто гасят enabled — этим занимаются
+// setMicrophone()/setCamera() выше, и это другая, независимая пара методов.
+describe('захват и освобождение по требованию', () => {
+  const fakeAudioTrack = () => ({kind: 'audio', enabled: true, stop: vi.fn()});
+  const fakeVideoTrack = () => ({kind: 'video', enabled: true, stop: vi.fn()});
+
+  // В отличие от fakeStream() выше (список дорожек фиксирован), этой группе
+  // тестов важно, что addTrack()/removeTrack() по-настоящему меняют состав:
+  // второй захват должен увидеть дорожку, добавленную первым, и не просить
+  // getUserMedia заново.
+  const fakeCapturedStream = initial => {
+    const tracks = [...initial];
+    return {
+      addTrack: t => tracks.push(t),
+      removeTrack: t => {
+        const i = tracks.indexOf(t);
+        if (i >= 0) tracks.splice(i, 1);
+      },
+      getAudioTracks: () => tracks.filter(t => t.kind === 'audio'),
+      getVideoTracks: () => tracks.filter(t => t.kind === 'video'),
+      getTracks: () => [...tracks],
+    };
+  };
+
+  it('captureMicrophone просит браузер только о звуке', async () => {
+    const audioTrack = fakeAudioTrack();
+    const capturedStream = fakeCapturedStream([audioTrack]);
+    const getUserMedia = vi.fn().mockResolvedValue(capturedStream);
+    const media = createMedia({getUserMedia});
+
+    const track = await media.captureMicrophone(stepForPeers(2));
+
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: constraintsFor(stepForPeers(2)).audio,
+      video: false,
+    });
+    expect(track).toBe(audioTrack);
+    expect(media.current()).toBe(capturedStream);
+  });
+
+  it('captureCamera просит браузер только о картинке', async () => {
+    const videoTrack = fakeVideoTrack();
+    const capturedStream = fakeCapturedStream([videoTrack]);
+    const getUserMedia = vi.fn().mockResolvedValue(capturedStream);
+    const media = createMedia({getUserMedia});
+
+    const track = await media.captureCamera(stepForPeers(2));
+
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: false,
+      video: constraintsFor(stepForPeers(2)).video,
+    });
+    expect(track).toBe(videoTrack);
+  });
+
+  it('на голосовой ступени камеру не захватывает вовсе — лестница не даёт включить, даже по прямой просьбе', async () => {
+    const getUserMedia = vi.fn();
+    const media = createMedia({getUserMedia});
+
+    const track = await media.captureCamera(STEPS.at(-1));
+
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(track).toBeNull();
+  });
+
+  it('второй вид медиа дописывается в уже идущий поток, а не пересоздаёт его', async () => {
+    const audioTrack = fakeAudioTrack();
+    const micStream = fakeCapturedStream([audioTrack]);
+    const videoTrack = fakeVideoTrack();
+    const camStream = fakeCapturedStream([videoTrack]);
+    const getUserMedia = vi
+      .fn()
+      .mockResolvedValueOnce(micStream)
+      .mockResolvedValueOnce(camStream);
+    const media = createMedia({getUserMedia});
+
+    await media.captureMicrophone(stepForPeers(2));
+    const streamAfterMic = media.current();
+    await media.captureCamera(stepForPeers(2));
+
+    expect(media.current()).toBe(streamAfterMic); // тот же объект, не пересоздан
+    expect(media.current().getAudioTracks()).toEqual([audioTrack]);
+    expect(media.current().getVideoTracks()).toEqual([videoTrack]);
+  });
+
+  it('повторный захват при уже идущей дорожке не зовёт getUserMedia снова', async () => {
+    const audioTrack = fakeAudioTrack();
+    const capturedStream = fakeCapturedStream([audioTrack]);
+    const getUserMedia = vi.fn().mockResolvedValue(capturedStream);
+    const media = createMedia({getUserMedia});
+
+    await media.captureMicrophone(stepForPeers(2));
+    const second = await media.captureMicrophone(stepForPeers(2));
+
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(second).toBeNull();
+  });
+
+  it('releaseMicrophone по-настоящему останавливает дорожку и убирает её из потока', async () => {
+    const audioTrack = fakeAudioTrack();
+    const capturedStream = fakeCapturedStream([audioTrack]);
+    const media = createMedia({getUserMedia: vi.fn().mockResolvedValue(capturedStream)});
+    await media.captureMicrophone(stepForPeers(2));
+
+    const released = media.releaseMicrophone();
+
+    expect(audioTrack.stop).toHaveBeenCalled(); // не просто enabled = false — устройство освобождено
+    expect(released).toEqual([audioTrack]);
+    expect(media.current().getAudioTracks()).toEqual([]);
+  });
+
+  it('releaseCamera останавливает и убирает картинку, микрофон не трогает', async () => {
+    const audioTrack = fakeAudioTrack();
+    const videoTrack = fakeVideoTrack();
+    const micStream = fakeCapturedStream([audioTrack]);
+    const camStream = fakeCapturedStream([videoTrack]);
+    const getUserMedia = vi
+      .fn()
+      .mockResolvedValueOnce(micStream)
+      .mockResolvedValueOnce(camStream);
+    const media = createMedia({getUserMedia});
+    await media.captureMicrophone(stepForPeers(2));
+    await media.captureCamera(stepForPeers(2));
+
+    const released = media.releaseCamera();
+
+    expect(videoTrack.stop).toHaveBeenCalled();
+    expect(audioTrack.stop).not.toHaveBeenCalled();
+    expect(released).toEqual([videoTrack]);
+    expect(media.current().getVideoTracks()).toEqual([]);
+    expect(media.current().getAudioTracks()).toEqual([audioTrack]); // микрофон остался жив
+  });
+
+  it('освобождение без предварительного захвата не падает и ничего не возвращает', () => {
+    const media = createMedia({getUserMedia: vi.fn()});
+
+    expect(media.releaseMicrophone()).toEqual([]);
+    expect(media.releaseCamera()).toEqual([]);
+  });
+});

@@ -1,5 +1,5 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {joinPublicChannels} from '../src/signal/public-channels.js';
+import {familiesFor, joinPublicChannels, parseFamilyNames} from '../src/signal/public-channels.js';
 import {relayUrlsFor} from '../src/signal/relays.js';
 
 const FAMILY_NAMES = ['torrent', 'nostr', 'mqtt'];
@@ -12,6 +12,8 @@ const FAMILY_NAMES = ['torrent', 'nostr', 'mqtt'];
 const createFakeRoom = () => {
   const peers = new Map();
   const addStreamCalls = [];
+  const addTrackCalls = [];
+  const removeTrackCalls = [];
   const actionsByNamespace = new Map();
 
   const room = {
@@ -21,6 +23,9 @@ const createFakeRoom = () => {
     getPeers: () => Object.fromEntries(peers),
     addStream: (stream, options = {}) =>
       addStreamCalls.push({stream, target: options.target}),
+    addTrack: (track, stream, options = {}) =>
+      addTrackCalls.push({track, stream, target: options.target}),
+    removeTrack: (track, options = {}) => removeTrackCalls.push({track, target: options.target}),
     replaceTrack: () => {},
     makeAction: namespace => {
       if (!actionsByNamespace.has(namespace)) {
@@ -48,6 +53,8 @@ const createFakeRoom = () => {
   return {
     room,
     addStreamCalls,
+    addTrackCalls,
+    removeTrackCalls,
     // Поддельные сокеты релеев этого семейства — {url: {readyState}}.
     // Пустой объект по умолчанию: ни один адрес не открыт, семейство мертво,
     // пока тест явно не откроет сокет через sockets.
@@ -109,6 +116,64 @@ describe('публичные каналы: адресная доставка', (
 
       expect(fakes.torrent.addStreamCalls).toEqual([{stream, target: 'петя'}]);
       expect(fakes.nostr.addStreamCalls).toEqual([]);
+    });
+  });
+
+  // Включение микрофона/камеры человеком после входа — addTrack()/
+  // removeTrack() следуют тому же правилу «решает отправитель», что и
+  // addStream() выше: своё медиа уходит адресно, только через канал
+  // владельца, никогда широковещательно.
+  describe('addTrack и removeTrack', () => {
+    it('дорожка уходит только владельцу, адресно', () => {
+      fakes.torrent.join('петя');
+      fakes.nostr.join('петя');
+      const track = {id: 'track-1'};
+      const stream = {id: 'stream-1'};
+
+      connection.addTrack(track, stream);
+
+      expect(fakes.torrent.addTrackCalls).toEqual([{track, stream, target: 'петя'}]);
+      expect(fakes.nostr.addTrackCalls).toEqual([]);
+      expect(fakes.mqtt.addTrackCalls).toEqual([]);
+    });
+
+    it('несколько участников из разных семейств — каждому своя адресная дорожка', () => {
+      fakes.torrent.join('аня');
+      fakes.nostr.join('боря');
+      const track = {id: 'track-1'};
+      const stream = {id: 'stream-1'};
+
+      connection.addTrack(track, stream);
+
+      expect(fakes.torrent.addTrackCalls).toEqual([{track, stream, target: 'аня'}]);
+      expect(fakes.nostr.addTrackCalls).toEqual([{track, stream, target: 'боря'}]);
+    });
+
+    it('дорожка, добавленная заранее, доразмечается новому участнику вместе с остальным потоком', () => {
+      const track = {id: 'track-1'};
+      const stream = {id: 'stream-1'};
+
+      connection.addTrack(track, stream);
+      fakes.torrent.join('петя');
+      fakes.nostr.join('петя');
+
+      // Как и у addStream() выше: localStream досылается новому участнику
+      // целиком через onPeerJoin() — отдельного addTrackCalls «задним
+      // числом» для позже подключившихся нет и не нужно.
+      expect(fakes.torrent.addStreamCalls).toEqual([{stream, target: 'петя'}]);
+      expect(fakes.nostr.addStreamCalls).toEqual([]);
+    });
+
+    it('removeTrack снимает дорожку только у владельца, тоже адресно', () => {
+      fakes.torrent.join('петя');
+      fakes.nostr.join('петя');
+      const track = {id: 'track-1'};
+
+      connection.removeTrack(track);
+
+      expect(fakes.torrent.removeTrackCalls).toEqual([{track, target: 'петя'}]);
+      expect(fakes.nostr.removeTrackCalls).toEqual([]);
+      expect(fakes.mqtt.removeTrackCalls).toEqual([]);
     });
   });
 
@@ -248,5 +313,52 @@ describe('публичные каналы: адресная доставка', (
       const torrent = connection.status().find(c => c.family === 'torrent');
       expect(torrent.relays).toEqual(relayUrlsFor('torrent'));
     });
+  });
+});
+
+// Переключатель семейств для диагностики: ?каналы=nostr или
+// ?каналы=torrent,mqtt в адресе страницы (см. main.js). Разбор строки и
+// отбор по имени — чистые функции, без браузера и без trystero.
+describe('parseFamilyNames', () => {
+  it('одно имя', () => {
+    expect(parseFamilyNames('nostr')).toEqual(['nostr']);
+  });
+
+  it('несколько имён через запятую, с пробелами', () => {
+    expect(parseFamilyNames('torrent, mqtt')).toEqual(['torrent', 'mqtt']);
+  });
+
+  it('параметра нет вовсе — пустой список', () => {
+    expect(parseFamilyNames(null)).toEqual([]);
+    expect(parseFamilyNames(undefined)).toEqual([]);
+  });
+
+  it('параметр есть, но пустой или из одних запятых — пустой список, а не список пустых строк', () => {
+    expect(parseFamilyNames('')).toEqual([]);
+    expect(parseFamilyNames(',,')).toEqual([]);
+  });
+});
+
+describe('familiesFor', () => {
+  const ALL = [{family: 'torrent'}, {family: 'nostr'}, {family: 'mqtt'}];
+
+  it('без имён — все семейства, как всегда', () => {
+    expect(familiesFor([], ALL)).toBe(ALL);
+  });
+
+  it('с именем — только совпавшие', () => {
+    expect(familiesFor(['nostr'], ALL)).toEqual([{family: 'nostr'}]);
+  });
+
+  it('несколько имён — сохраняют исходный порядок списка семейств, а не порядок в параметре', () => {
+    expect(familiesFor(['mqtt', 'torrent'], ALL)).toEqual([{family: 'torrent'}, {family: 'mqtt'}]);
+  });
+
+  it('неизвестное имя молча отсеивается — это инструмент для своего эксперимента, не форма с проверкой', () => {
+    expect(familiesFor(['nostr', 'неведомое'], ALL)).toEqual([{family: 'nostr'}]);
+  });
+
+  it('все имена неизвестны — пустой список семейств, а не полный набор по умолчанию', () => {
+    expect(familiesFor(['неведомое'], ALL)).toEqual([]);
   });
 });

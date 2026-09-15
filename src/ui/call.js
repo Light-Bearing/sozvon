@@ -2,6 +2,11 @@
 // камера служит фоном: комната не выглядит пустой, и сразу видно, что
 // камера работает. Как только появился собеседник, фон уходит, плитки
 // занимают экран, а ссылка сворачивается в кнопку у остальных.
+//
+// Вход в разговор молчаливый — камеры может не быть вовсе, пока человек
+// сам её не включит. Фон и плитка это не прячут и не подделывают: без
+// картинки плитка темнеет и показывает инициал (см. hasPicture() ниже и
+// .tile--dark в style.css), а фон остаётся своим спокойным градиентом.
 
 const hasPicture = stream => stream?.getVideoTracks().some(track => track.enabled);
 
@@ -63,7 +68,13 @@ export const renderCall = (container, state, actions) => {
   container.dataset.busy = alone ? 'no' : 'yes';
 
   const backdrop = container.querySelector('#backdrop');
-  if (backdrop.srcObject !== state.self) backdrop.srcObject = state.self ?? null;
+  // Без камеры (её ещё не включили, или поток без единой видеодорожки)
+  // фону нечего показывать — гасим srcObject явно, а не полагаемся на то,
+  // как браузер отрисует пустой или беззвучный-без-картинки поток. Фон
+  // тогда остаётся собственным спокойным градиентом из style.css, а не
+  // чёрной дырой.
+  const backdropSource = hasPicture(state.self) ? state.self : null;
+  if (backdrop.srcObject !== backdropSource) backdrop.srcObject = backdropSource;
 
   container.querySelector('#tiles').replaceChildren(
     tile('self', state.self, 'Вы', true),

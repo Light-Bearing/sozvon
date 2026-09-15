@@ -17,6 +17,24 @@ const FAMILIES = [
   {family: 'mqtt', join: joinMqtt, getRelaySockets: mqttSockets},
 ];
 
+// Отладочный отбор семейств по адресу страницы — например, ?каналы=nostr
+// или ?каналы=torrent,mqtt, — чтобы проверить «а если оставить одно
+// семейство, связь встанет?» (см. main.js). Разбор строки и отбор по имени
+// нарочно разделены: первый ничего не знает про сами семейства, второй
+// ничего не знает про URL — каждый проверяется тестом отдельно и без браузера.
+export const parseFamilyNames = value =>
+  value
+    ?.split(',')
+    .map(name => name.trim())
+    .filter(Boolean) ?? [];
+
+// Без имён (параметра нет или он пуст) — все семейства, как всегда.
+// Неизвестные имена молча отсеиваются: это инструмент для собственного
+// эксперимента разработчика, а не пользовательский ввод, который нужно
+// проверять на опечатки.
+export const familiesFor = (names, all = FAMILIES) =>
+  names.length ? all.filter(({family}) => names.includes(family)) : all;
+
 // families — необязательный параметр только для тестов: подсовывает
 // поддельные {family, join} вместо трёх настоящих пакетов. Вызывающие из
 // приложения его не передают и получают FAMILIES по умолчанию.
@@ -90,6 +108,28 @@ export const joinPublicChannels = ({roomId, password, handlers, families = FAMIL
       localStream = stream;
       for (const peerId of registry.peers()) {
         roomOf(registry.ownerOf(peerId)).addStream(stream, {target: peerId});
+      }
+    },
+    // Дорожка по требованию (включение микрофона/камеры человеком после
+    // входа) — тот же принцип, что у addStream() выше: решает отправитель,
+    // шлём только владельцу и адресно. localStream держим свежим и здесь:
+    // это тот же общий поток, что мутирует media.js (там addTrack()/
+    // removeTrack() дописывают и убирают дорожки в НЁМ ЖЕ, не пересоздавая
+    // объект) — поэтому участнику, подключившемуся позже, ничего досылать
+    // не нужно: onPeerJoin() ниже сам отдаст localStream целиком, уже со
+    // всеми дорожками, какие в нём на тот момент есть.
+    addTrack: (track, stream) => {
+      localStream = stream;
+      for (const peerId of registry.peers()) {
+        roomOf(registry.ownerOf(peerId)).addTrack(track, stream, {target: peerId});
+      }
+    },
+    // Снимает дорожку с уже установленных соединений (человек выключил
+    // микрофон или камеру). Поток здесь не нужен — библиотека находит
+    // отправителя по самой дорожке.
+    removeTrack: track => {
+      for (const peerId of registry.peers()) {
+        roomOf(registry.ownerOf(peerId)).removeTrack(track, {target: peerId});
       }
     },
     replaceTrack: (oldTrack, newTrack) =>

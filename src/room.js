@@ -16,6 +16,7 @@ export const createRoom = async ({
   connectFn = connect,
   media = createMedia(),
   ladder = createLadder(),
+  families,
 }) => {
   const peers = new Map();
   let step = stepForPeers(1);
@@ -28,8 +29,13 @@ export const createRoom = async ({
   // Раньше такт лестницы переписывал video.enabled сам, без оглядки на
   // то, что человек только что нажал «Камера», — через две секунды нажатие
   // тихо отменялось.
-  let cameraWanted = true;
-  let microphoneWanted = true;
+  //
+  // Начинаются с false и остаются такими, пока человек сам не нажмёт
+  // «Микрофон» или «Камеру»: при входе браузер ни о чём не спрашивает,
+  // слушать и видеть остальных это не мешает — соединение поднимается без
+  // исходящих дорожек и прекрасно принимает входящие.
+  let cameraWanted = false;
+  let microphoneWanted = false;
 
   // Каналы рукопожатия долго молчат. Это подсказка человеку, а не отказ:
   // звонок продолжает попытки, просто перестаёт делать вид, что всё идёт
@@ -48,17 +54,17 @@ export const createRoom = async ({
 
   const announce = () => onChange(state());
 
-  const stream = await media.start(step);
-
-  // Камера и микрофон захвачены уже здесь, а подключение может не
-  // состояться по другой причине. Если connectFn() отклонился, поток
-  // надо погасить: media.stop() живёт только в leave(), а до leave()
-  // дело не дойдёт — человек увидит экран неудачи, а лампочка камеры
-  // будет гореть до закрытия вкладки.
+  // Ничего не захватываем: вход в разговор молчаливый. connectFn() поднимет
+  // соединение без единой исходящей дорожки — оно прекрасно принимает
+  // входящее медиа и без своего. media.stop() в catch — подстраховка на
+  // случай, если что-то всё же успеет захватиться до отказа; сейчас это
+  // всегда безопасный no-op (см. «выключатели до захвата не падают» в
+  // tests/media.test.js), но дешевле оставить симметрично с leave().
   let connection;
   try {
     connection = await connectFn({
       secret,
+      families,
       onQuiet: isQuiet => {
         if (quiet === isQuiet) return;
         quiet = isQuiet;
@@ -84,7 +90,6 @@ export const createRoom = async ({
     throw error;
   }
 
-  connection.addStream(stream);
   announce();
 
   const tracker = createSpeakingTracker();
@@ -94,27 +99,34 @@ export const createRoom = async ({
   let listener = null;
   let audio = null;
 
-  // action() связи и AudioContext бывают недоступны — например, в тестовом
-  // узловом окружении vitest (без jsdom) нет ни того, ни другого. Тогда
-  // просто не измеряем и не рассылаем уровень звука: автоматика говорящего
-  // останется неактивной, но звонок из-за необязательной части падать
-  // не должен.
-  if (typeof connection.action === 'function' && typeof AudioContext !== 'undefined') {
-    const levels = connection.action('level');
-    // Вторым аргументом приходит объект с полем peerId, а не сам идентификатор.
-    levels.onMessage = (level, {peerId}) => tracker.report(peerId, level);
+  // action() связи бывает недоступен — например, в тестовом узловом
+  // окружении vitest (без jsdom) его нет. Тогда просто не участвуем в
+  // обмене уровнями: автоматика говорящего останется неактивной, но звонок
+  // из-за необязательной части падать не должен. Приём чужого уровня не
+  // зависит от того, включил ли человек уже свой микрофон, — слушаем канал
+  // сразу, с самого начала звонка.
+  const levels = typeof connection.action === 'function' ? connection.action('level') : null;
+  // Вторым аргументом приходит объект с полем peerId, а не сам идентификатор.
+  if (levels) levels.onMessage = (level, {peerId}) => tracker.report(peerId, level);
 
-    // Свой уровень звука меряем локально и рассылаем остальным.
+  // А вот измерение и рассылка СВОЕГО уровня возможны, только когда есть
+  // живая дорожка микрофона, — включает их startMicrophone() ниже, а не
+  // здесь: раньше AudioContext заводился безусловно при старте звонка,
+  // потому что и микрофон захватывался безусловно. Теперь оба — по решению
+  // человека, и вместе.
+  const startLevelMeter = async micStream => {
+    if (audio || !levels || typeof AudioContext === 'undefined') return;
     audio = new AudioContext();
-    // Создаётся уже после await'ов выше — то есть вне жеста человека, а по
-    // правилам браузеров такой AudioContext может родиться приостановленным.
-    // Тогда анализатор молча читает нули, tracker.report(SELF, …) не
-    // срабатывает, и на ступени «видео у говорящего» камера этого человека
-    // будет выключена весь звонок — и никто не скажет почему.
+    // Создаётся после await'ов внутри захвата — то есть вне жеста
+    // человека, а по правилам браузеров такой AudioContext может родиться
+    // приостановленным. Тогда анализатор молча читает нули,
+    // tracker.report(SELF, …) не срабатывает, и на ступени «видео у
+    // говорящего» камера этого человека будет выключена весь звонок — и
+    // никто не скажет почему.
     if (audio.state === 'suspended') await audio.resume();
     const analyser = audio.createAnalyser();
     analyser.fftSize = 512;
-    audio.createMediaStreamSource(stream).connect(analyser);
+    audio.createMediaStreamSource(micStream).connect(analyser);
     const samples = new Float32Array(analyser.fftSize);
 
     const listen = () => {
@@ -124,7 +136,17 @@ export const createRoom = async ({
       void levels.send(level);
     };
     listener = setInterval(listen, 300);
-  }
+  };
+
+  // Выключение микрофона гасит и измерение — иначе анализатор слушает уже
+  // остановленную дорожку и вместо честной тишины просто ничего не скажет
+  // о том, что перестал работать.
+  const stopLevelMeter = () => {
+    clearInterval(listener);
+    listener = null;
+    void audio?.close();
+    audio = null;
+  };
 
   // Потолок битрейта — отдельно от смены ступени и без всяких условий:
   // проставляется всем текущим собеседникам на каждом пересчёте. Так он
@@ -166,6 +188,72 @@ export const createRoom = async ({
   const applyDesiredMedia = () => {
     media.setMicrophone(microphoneWanted);
     media.setCamera(cameraWanted && cameraAllowed());
+  };
+
+  // Захват по требованию — реакция на явное нажатие человека, а не на такт
+  // лестницы (тот лишь гасит/зажигает уже имеющуюся дорожку через
+  // applyDesiredMedia() выше, каждые STATS_EVERY_MS; звать отсюда
+  // getUserMedia нельзя — при ступени 'speaker' смена говорящего дёргала бы
+  // устройство по нескольку раз в минуту). Захваченная дорожка рассылается
+  // адресно, как и остальное медиа в этом файле, — решает отправитель.
+  //
+  // capturing-флаги защищают от второго клика, пока браузер ещё спрашивает
+  // разрешение на первый: там же, где уже однажды было «трое писателей у
+  // одной дорожки», второй параллельный getUserMedia — тот же риск заново.
+  let microphoneCapturing = false;
+  let cameraCapturing = false;
+
+  const startMicrophone = async () => {
+    if (microphoneCapturing) return;
+    microphoneCapturing = true;
+    try {
+      const track = await media.captureMicrophone(step);
+      if (!microphoneWanted) {
+        // Человек успел выключить микрофон, пока браузер спрашивал
+        // разрешение, — не держим устройство ради намерения, которого уже
+        // нет (иначе кнопка «выключено», а огонёк горит).
+        if (track) media.releaseMicrophone();
+        return;
+      }
+      if (track) connection.addTrack(track, media.current());
+      await startLevelMeter(media.current());
+    } catch {
+      // Браузер не пустил (или устройство недоступно) — звонок
+      // продолжается, кнопка честно возвращается в «выключено».
+      microphoneWanted = false;
+    } finally {
+      microphoneCapturing = false;
+      applyDesiredMedia();
+      announce();
+    }
+  };
+
+  const stopMicrophone = () => {
+    for (const track of media.releaseMicrophone()) connection.removeTrack(track);
+    stopLevelMeter();
+  };
+
+  const startCamera = async () => {
+    if (cameraCapturing) return;
+    cameraCapturing = true;
+    try {
+      const track = await media.captureCamera(step);
+      if (!cameraWanted) {
+        if (track) media.releaseCamera();
+        return;
+      }
+      if (track) connection.addTrack(track, media.current());
+    } catch {
+      cameraWanted = false;
+    } finally {
+      cameraCapturing = false;
+      applyDesiredMedia();
+      announce();
+    }
+  };
+
+  const stopCamera = () => {
+    for (const track of media.releaseCamera()) connection.removeTrack(track);
   };
 
   const applyStep = async next => {
@@ -216,21 +304,28 @@ export const createRoom = async ({
     state,
     // Единственное место, где cameraWanted/microphoneWanted меняются. Сразу
     // же применяем к дорожкам и объявляем новое состояние — человек должен
-    // увидеть эффект нажатия немедленно, а не ждать ближайшего такта лестницы.
+    // увидеть эффект нажатия немедленно, а не ждать ни ближайшего такта
+    // лестницы, ни того, пока браузер спросит разрешение на захват.
+    // Возвращают промис захвата (undefined при выключении, там снимать
+    // нечего) — им пользуются тесты, чтобы дождаться итога, не гоняя
+    // таймеры; кнопке в src/ui/call.js возвращаемое значение не нужно.
     setMicrophone: on => {
       microphoneWanted = on;
+      if (!on) stopMicrophone();
       applyDesiredMedia();
       announce();
+      return on ? startMicrophone() : undefined;
     },
     setCamera: on => {
       cameraWanted = on;
+      if (!on) stopCamera();
       applyDesiredMedia();
       announce();
+      return on ? startCamera() : undefined;
     },
     leave: async () => {
       clearInterval(timer);
-      clearInterval(listener);
-      void audio?.close();
+      stopLevelMeter();
       media.stop();
       await connection.leave();
     },

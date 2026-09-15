@@ -49,6 +49,13 @@ const fakeMedia = () => ({
   applyStep: vi.fn().mockResolvedValue(undefined),
   setMicrophone: vi.fn(),
   setCamera: vi.fn(),
+  // По умолчанию «нечего захватывать/снимать» — большинству тестов файла
+  // захват безразличен, они проверяют такт лестницы и единого хозяина
+  // намерения. Тесты про сам захват (ниже) подменяют возвращаемое значение.
+  captureMicrophone: vi.fn().mockResolvedValue(null),
+  captureCamera: vi.fn().mockResolvedValue(null),
+  releaseMicrophone: vi.fn(() => []),
+  releaseCamera: vi.fn(() => []),
   stop: vi.fn(),
 });
 
@@ -68,6 +75,8 @@ const fakeConnection = () => {
   return {
     handlers: null,
     addStream: vi.fn(),
+    addTrack: vi.fn(),
+    removeTrack: vi.fn(),
     getPeers: () => Object.fromEntries(pcs),
     leave: vi.fn().mockResolvedValue(undefined),
     setPeer: (peerId, pc) => pcs.set(peerId, pc),
@@ -283,7 +292,9 @@ describe('намерение человека — единый хозяин ка
     const ladder = fakeLadder([VOICE]);
     const {room, media} = await openRoom({ladder});
 
-    // cameraWanted остаётся true по умолчанию — человек ничего не нажимал.
+    // Намерение теперь начинается с false — человек должен сперва попросить
+    // камеру, иначе сравнивать с запретом лестницы нечего.
+    await room.setCamera(true);
     await vi.advanceTimersByTimeAsync(STATS_EVERY_MS);
     expect(media.setCamera).toHaveBeenLastCalledWith(false);
 
@@ -318,14 +329,15 @@ describe('намерение человека — единый хозяин ка
   it('state() отдаёт текущее намерение по камере и микрофону', async () => {
     const {room} = await openRoom();
 
-    expect(room.state().cam).toBe(true);
-    expect(room.state().mic).toBe(true);
-
-    room.setCamera(false);
+    // Вход молчаливый — оба намерения начинаются с false.
     expect(room.state().cam).toBe(false);
-
-    room.setMicrophone(false);
     expect(room.state().mic).toBe(false);
+
+    await room.setCamera(true);
+    expect(room.state().cam).toBe(true);
+
+    await room.setMicrophone(true);
+    expect(room.state().mic).toBe(true);
 
     await room.leave();
   });
@@ -368,6 +380,10 @@ describe('измерение уровня звука не должно молч�
       connection.action = vi.fn(() => ({onMessage: null, send: vi.fn().mockResolvedValue(undefined)}));
 
       const {room} = await openRoom({connection});
+      // Измерение своего уровня включается вместе с микрофоном — раньше
+      // AudioContext заводился безусловно при старте звонка, теперь только
+      // здесь, потому что и сам микрофон захватывается только по просьбе.
+      await room.setMicrophone(true);
 
       expect(resume).toHaveBeenCalledTimes(1);
 
@@ -402,6 +418,7 @@ describe('измерение уровня звука не должно молч�
       connection.action = vi.fn(() => ({onMessage: null, send: vi.fn().mockResolvedValue(undefined)}));
 
       const {room} = await openRoom({connection});
+      await room.setMicrophone(true);
 
       expect(resume).not.toHaveBeenCalled();
 
@@ -442,6 +459,12 @@ describe('камера не включается против воли чело�
       getVideoTracks: () => [video],
       getAudioTracks: () => [audio],
       getTracks: () => [audio, video],
+      // Захват по требованию дописывает/снимает дорожки настоящими
+      // addTrack()/removeTrack() — см. src/media.js. Список дорожек здесь
+      // намеренно остаётся фиксированным (как и в tests/media.test.js): для
+      // этого теста важно только то, что enabled не трогается лишний раз.
+      addTrack: vi.fn(),
+      removeTrack: vi.fn(),
     };
     const media = createMedia({getUserMedia: vi.fn().mockResolvedValue(stream)});
 
@@ -450,6 +473,10 @@ describe('камера не включается против воли чело�
     const ladder = fakeLadder([SMALL]);
     const {room} = await openRoom({media, ladder});
 
+    // Вход молчаливый — камеру сперва нужно по-настоящему запросить (это и
+    // заводит внутренний stream настоящего media.js на fake-поток выше),
+    // только потом есть что выключать.
+    await room.setCamera(true);
     room.setCamera(false);
     enabledHistory.length = 0; // дальше важно только то, что после выключения
 
@@ -462,14 +489,19 @@ describe('камера не включается против воли чело�
   });
 });
 
-// Захват медиа идёт до подключения, а подключение может отклониться —
-// например, если библиотека не сумела подняться вовсе.
-// Раньше при отказе createRoom падал целиком, а поток никто не гасил —
-// media.stop() жил только в leave(), до которого дело не доходило: человек
-// видел «Связь не установилась», а камера продолжала гореть до закрытия
-// вкладки.
+// Раньше медиа захватывалось до подключения, а подключение могло
+// отклониться — например, если библиотека не сумела подняться вовсе. Тогда
+// при отказе createRoom падал целиком, а поток никто не гасил: media.stop()
+// жил только в leave(), до которого дело не доходило — человек видел «Связь
+// не установилась», а камера продолжала гореть до закрытия вкладки.
+//
+// Теперь до подключения не захватывается вообще ничего (setMicrophone()/
+// setCamera() ещё недоступны вызывающему — createRoom их не вернул), так
+// что media.start() здесь больше не при делах. media.stop() в catch —
+// оставлен как защитная подстраховка (симметрично с leave()) и должен
+// оставаться безопасным, даже когда снимать нечего.
 describe('поток гасится, если рукопожатие не состоялось', () => {
-  it('media.stop() вызывается до того, как ошибка connectFn() долетит до вызывающего', async () => {
+  it('отказ connectFn() долетает до вызывающего, а media.stop() не мешает и не падает', async () => {
     const media = fakeMedia();
     const boom = Object.assign(new Error('рукопожатие не поднялось'), {
       name: 'SignalStartupError',
@@ -480,8 +512,8 @@ describe('поток гасится, если рукопожатие не сос
       createRoom({secret: 'секрет-теста', connectFn, media, ladder: fakeLadder([FULL])})
     ).rejects.toBe(boom);
 
-    expect(media.start).toHaveBeenCalled(); // поток был захвачен...
-    expect(media.stop).toHaveBeenCalled(); // ...и погашен, а не оставлен гореть
+    expect(media.start).not.toHaveBeenCalled(); // захвата при входе больше нет
+    expect(media.stop).toHaveBeenCalled(); // защитный вызов остался и не падает на пустом месте
   });
 
   it('успешное подключение media.stop() не трогает', async () => {
@@ -491,5 +523,150 @@ describe('поток гасится, если рукопожатие не сос
 
     await room.leave();
     expect(media.stop).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Человек попросил выключить камеру по умолчанию, а следом и микрофон:
+// вход в разговор молчаливый, оба включаются по отдельному явному нажатию,
+// и каждое просит браузер ровно об одном виде медиа.
+describe('вход без захвата и включение по требованию', () => {
+  it('вход в разговор не захватывает ни звука, ни картинки', async () => {
+    const media = fakeMedia();
+    const {room} = await openRoom({media});
+
+    expect(media.start).not.toHaveBeenCalled();
+    expect(media.captureMicrophone).not.toHaveBeenCalled();
+    expect(media.captureCamera).not.toHaveBeenCalled();
+
+    await room.leave();
+  });
+
+  it('включение микрофона захватывает только звук и рассылает дорожку адресно', async () => {
+    const media = fakeMedia();
+    const track = {kind: 'audio'};
+    media.captureMicrophone.mockResolvedValue(track);
+    const connection = fakeConnection();
+    const {room} = await openRoom({media, connection});
+
+    await room.setMicrophone(true);
+
+    expect(media.captureMicrophone).toHaveBeenCalledTimes(1);
+    expect(media.captureCamera).not.toHaveBeenCalled(); // камеру отдельным нажатием не просили
+    expect(connection.addTrack).toHaveBeenCalledWith(track, media.current());
+
+    await room.leave();
+  });
+
+  it('включение камеры захватывает только картинку — микрофон не просит', async () => {
+    const media = fakeMedia();
+    const track = {kind: 'video'};
+    media.captureCamera.mockResolvedValue(track);
+    const connection = fakeConnection();
+    const {room} = await openRoom({media, connection});
+
+    await room.setCamera(true);
+
+    expect(media.captureCamera).toHaveBeenCalledTimes(1);
+    expect(media.captureMicrophone).not.toHaveBeenCalled();
+    expect(connection.addTrack).toHaveBeenCalledWith(track, media.current());
+
+    await room.leave();
+  });
+
+  it('выключение снимает дорожку с соединений — release() освобождает устройство', async () => {
+    const media = fakeMedia();
+    const track = {kind: 'video'};
+    media.captureCamera.mockResolvedValue(track);
+    media.releaseCamera.mockReturnValue([track]); // то, что реально отдаёт настоящий media.js — см. tests/media.test.js
+    const connection = fakeConnection();
+    const {room} = await openRoom({media, connection});
+
+    await room.setCamera(true);
+    room.setCamera(false);
+
+    expect(media.releaseCamera).toHaveBeenCalled();
+    expect(connection.removeTrack).toHaveBeenCalledWith(track);
+
+    await room.leave();
+  });
+
+  it('отказ в разрешении не роняет звонок — намерение честно откатывается', async () => {
+    const media = fakeMedia();
+    const boom = Object.assign(new Error('пользователь запретил'), {name: 'NotAllowedError'});
+    media.captureCamera.mockRejectedValue(boom);
+    const {room} = await openRoom({media});
+
+    // Промис захвата не должен ни отклониться, ни уронить звонок.
+    await expect(room.setCamera(true)).resolves.toBeUndefined();
+
+    expect(room.state().cam).toBe(false); // кнопка возвращается в «выключено»
+
+    await room.leave();
+  });
+
+  it('отказ в разрешении на микрофон так же не роняет звонок', async () => {
+    const media = fakeMedia();
+    const boom = Object.assign(new Error('пользователь запретил'), {name: 'NotAllowedError'});
+    media.captureMicrophone.mockRejectedValue(boom);
+    const {room} = await openRoom({media});
+
+    await expect(room.setMicrophone(true)).resolves.toBeUndefined();
+    expect(room.state().mic).toBe(false);
+
+    await room.leave();
+  });
+
+  // Требование задачи: лестница может только НЕ ДАТЬ включить (гасит
+  // enabled на уже существующей дорожке через applyDesiredMedia), но сама
+  // она за человека камеру или микрофон никогда не захватывает.
+  it('такты лестницы сами по себе ничего не захватывают, пока человек не попросил', async () => {
+    const media = fakeMedia();
+    const ladder = fakeLadder([FULL, FULL, FULL]);
+    const {room} = await openRoom({media, ladder});
+
+    await vi.advanceTimersByTimeAsync(STATS_EVERY_MS * 3);
+
+    expect(media.captureMicrophone).not.toHaveBeenCalled();
+    expect(media.captureCamera).not.toHaveBeenCalled();
+
+    await room.leave();
+  });
+});
+
+// Переключатель семейств каналов для диагностики (?каналы=... в main.js) —
+// сам разбор и отбор живут в signal/public-channels.js и проверены там;
+// здесь достаточно убедиться, что createRoom честно доносит параметр до
+// connectFn(), не подменяя и не теряя его по пути.
+describe('передача параметра семейств дальше в connectFn', () => {
+  it('families уходит в connectFn как есть', async () => {
+    const connection = fakeConnection();
+    const families = [{family: 'nostr'}];
+    const connectFn = vi.fn(fakeConnectFn(connection));
+
+    const room = await createRoom({
+      secret: 'секрет-теста',
+      connectFn,
+      families,
+      ladder: fakeLadder([FULL]),
+    });
+
+    expect(connectFn).toHaveBeenCalledWith(expect.objectContaining({families}));
+
+    await room.leave();
+  });
+
+  it('без параметра в connectFn уходит undefined — там уже свой умолчательный список', async () => {
+    const connection = fakeConnection();
+    const connectFn = vi.fn(fakeConnectFn(connection));
+
+    const room = await createRoom({
+      secret: 'секрет-теста',
+      connectFn,
+      ladder: fakeLadder([FULL]),
+    });
+
+    expect(connectFn).toHaveBeenCalledWith(expect.objectContaining({families: undefined}));
+
+    await room.leave();
   });
 });

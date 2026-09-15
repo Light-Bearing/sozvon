@@ -1,5 +1,6 @@
 import {generateSecret, linkToSecret} from './room-secret.js';
 import {createRoom} from './room.js';
+import {familiesFor, parseFamilyNames} from './signal/public-channels.js';
 import {renderCall} from './ui/call.js';
 import {explainFailure, showScreen} from './ui/screens.js';
 import {renderDiagnostics} from './ui/diagnostics.js';
@@ -7,6 +8,14 @@ import {renderDiagnostics} from './ui/diagnostics.js';
 const app = document.querySelector('#app');
 
 let room = null;
+
+// Отладочный переключатель семейств каналов: ?каналы=nostr или
+// ?каналы=torrent,mqtt ограничивает список для опыта «а если оставить
+// одно семейство, связь встанет?» (см. README.md). Без параметра — все
+// три, как обычно.
+const families = familiesFor(
+  parseFamilyNames(new URLSearchParams(location.search).get('каналы')),
+);
 
 // Роль узнаём один раз, при загрузке страницы, — до того, как enter()
 // что-нибудь запишет в адрес. Дальше решаем по этому значению, а не по
@@ -28,6 +37,7 @@ const enter = async secret => {
   try {
     room = await createRoom({
       secret,
+      families,
       // Намерение по микрофону/камере целиком живёт в room.js (createRoom
       // заводит его заново на каждый звонок) и приходит сюда через state —
       // отдельной копии в main.js больше нет, поэтому её нечему рассогласовать
@@ -72,8 +82,9 @@ for (const button of app.querySelectorAll('[data-diagnostics]')) {
 app.querySelector('#diagnostics-close').onclick = () =>
   showScreen(app, screenBeforeDiagnostics);
 
-// Гость видит, кто зовёт, и жмёт кнопку. Камеру браузер спросит только
-// после нажатия — если спросить при загрузке, половина людей уходит.
+// Гость видит, кто зовёт, и жмёт кнопку — вход в разговор молчаливый,
+// браузер пока ни о чём не спрашивает. Камеру и микрофон человек включит
+// сам, уже внутри звонка, отдельным нажатием на нужную кнопку.
 if (invited) {
   app.querySelector('#join').onclick = () => void enter(invited);
   showScreen(app, 'join');

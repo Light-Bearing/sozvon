@@ -48,6 +48,62 @@ export const createMedia = ({
     setMicrophone: on => stream?.getAudioTracks().forEach(t => (t.enabled = on)),
     setCamera: on => stream?.getVideoTracks().forEach(t => (t.enabled = on)),
 
+    // Захват по требованию — отдельно от setMicrophone()/setCamera() выше.
+    // Те двое ничего не захватывают, только гасят и зажигают уже имеющуюся
+    // дорожку (ими распоряжается такт лестницы — applyDesiredMedia() в
+    // src/room.js, и звать getUserMedia на каждом такте нельзя). Захват —
+    // дело одного явного нажатия человека, поэтому у него свои методы.
+    //
+    // Каждый просит браузер ровно об одном — только звук или только
+    // картинка, отдельным вызовом getUserMedia, — чтобы разрешение
+    // спрашивалось только на то, что действительно нужно сейчас. Первый
+    // захват в звонке отдаёт общий поток целиком, дальше в него дописывает
+    // дорожки addTrack — новый getUserMedia пересоздавал бы уже идущую
+    // дорожку и моргал бы устройством, которое и так работает.
+    captureMicrophone: async step => {
+      if (stream?.getAudioTracks().length) return null; // уже захвачен
+      const captured = await getUserMedia({audio: constraintsFor(step).audio, video: false});
+      const [track] = captured.getAudioTracks();
+      if (stream) stream.addTrack(track);
+      else stream = captured;
+      return track;
+    },
+
+    // На голосовой ступени видео не просит никто и никогда (см.
+    // constraintsFor) — лестница здесь не включает камеру, а лишь не даёт
+    // это сделать, даже если явно попросили.
+    captureCamera: async step => {
+      const video = constraintsFor(step).video;
+      if (!video) return null;
+      if (stream?.getVideoTracks().length) return null; // уже захвачена
+      const captured = await getUserMedia({audio: false, video});
+      const [track] = captured.getVideoTracks();
+      if (stream) stream.addTrack(track);
+      else stream = captured;
+      return track;
+    },
+
+    // Освобождение устройства — не «выключатель» выше (enabled = false), а
+    // настоящий track.stop(): камера и микрофон гаснут по-настоящему, а не
+    // только перестают слаться собеседникам. Отдают остановленные дорожки —
+    // вызывающему (room.js) нужно ещё снять их с соединений.
+    releaseMicrophone: () => {
+      const tracks = stream?.getAudioTracks() ?? [];
+      tracks.forEach(t => {
+        t.stop();
+        stream.removeTrack(t);
+      });
+      return tracks;
+    },
+    releaseCamera: () => {
+      const tracks = stream?.getVideoTracks() ?? [];
+      tracks.forEach(t => {
+        t.stop();
+        stream.removeTrack(t);
+      });
+      return tracks;
+    },
+
     stop: () => {
       stream?.getTracks().forEach(t => t.stop());
       stream = null;
