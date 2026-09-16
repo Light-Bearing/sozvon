@@ -4,13 +4,24 @@
 
 const CACHE = 'sozvon-v1';
 
+// Саму страницу просим В ОБХОД кэша браузера. GitHub Pages отдаёт её с
+// max-age=600 — то есть до десяти минут браузер показывает вчерашнюю
+// разметку, а она тянет вчерашнюю сборку. Человек при этом уверен, что
+// обновился, и проверяет исправления, которых у него нет. Страница весит
+// килобайты, а имена файлов сборки в ней с отпечатком — значит всё
+// остальное кэшируется как обычно и ничего не стоит.
+const freshly = request =>
+  request.mode === 'navigate' || request.destination === 'document'
+    ? new Request(request, {cache: 'reload'})
+    : request;
+
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
 
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
-    fetch(event.request)
+    fetch(freshly(event.request))
       .then(response => {
         const copy = response.clone();
         void caches.open(CACHE)

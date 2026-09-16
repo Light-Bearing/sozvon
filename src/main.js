@@ -148,6 +148,7 @@ const settings = createSettings(app, {
   currentDevices: () => picked,
   currentRelay: () => relay,
   currentFlow: () => room?.state().flow ?? null,
+  version: typeof __ВЕРСИЯ__ === 'string' ? __ВЕРСИЯ__ : '',
   setRelay: (field, value) => {
     relay[field] = value.trim();
     remember({address: 'ретранслятор', secret: 'ключ-ретранслятора'}[field], relay[field] || null);

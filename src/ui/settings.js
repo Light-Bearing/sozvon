@@ -54,6 +54,11 @@ export const createSettings = (root, actions) => {
   const relayAddress = root.querySelector('#relay-address');
   const relaySecret = root.querySelector('#relay-secret');
 
+  // Версия видна всегда: «исправление не помогло» и «исправление до тебя
+  // не доехало» — разные беды, а на вид одинаковые.
+  const versionLine = root.querySelector('#version');
+  if (versionLine) versionLine.textContent = `Созвон ${actions.version ?? ''}`.trim();
+
   const flowLine = root.querySelector('#flow');
   let flowTimer = null;
 

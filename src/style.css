@@ -723,3 +723,11 @@ select.field-input {
 }
 
 #mic[aria-pressed='false']::before { box-shadow: none; }
+
+.sheet-version {
+  margin: 0.9rem 0 0;
+  text-align: center;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
