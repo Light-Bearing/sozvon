@@ -56,6 +56,47 @@ export const joinPublicChannels = ({
   // на приёме мы не привередничаем, откуда, лишь бы не повторялось.
   const streamedPeers = new Set();
 
+  // Поток каждого собеседника собираем САМИ, а не отдаём наверх тот, что
+  // дала библиотека. Причина простая: пересогласование случается на каждое
+  // включение микрофона или камеры, и дорожка после него может приехать с
+  // другим объектом потока. Отдай мы его как есть — плитка мгновенно
+  // потеряла бы всё, чего в нём нет: включил звук, пропала картинка.
+  // Свой поток этого не умеет: в него только добавляют и из него убирают.
+  const peerStreams = new Map();
+
+  const streamFor = peerId => {
+    if (!peerStreams.has(peerId)) peerStreams.set(peerId, new MediaStream());
+    return peerStreams.get(peerId);
+  };
+
+  const takeTrack = (track, peerId) => {
+    const stream = streamFor(peerId);
+
+    // У собеседника в разговоре не бывает двух микрофонов или двух камер:
+    // новая дорожка того же вида ЗАМЕНЯЕТ прежнюю. Без этого правила после
+    // каждого пересогласования — а оно случается на любое включение
+    // микрофона — в потоке копились бы мёртвые дорожки, и проигрыватель
+    // брал бы первую из них, то есть показывал пустоту вместо картинки.
+    for (const прежняя of stream.getTracks()) {
+      if (прежняя !== track && прежняя.kind === track.kind) stream.removeTrack(прежняя);
+    }
+    stream.addTrack(track);
+
+    // Собеседник выключил камеру — дорожка глохнет, но не исчезает.
+    // Перерисовываем, чтобы плитка честно потемнела, а кончившуюся дорожку
+    // убираем совсем.
+    const обновить = () => {
+      if (peerStreams.get(peerId) !== stream) return;
+      if (track.readyState === 'ended') stream.removeTrack(track);
+      handlers.onPeerStream?.(stream, peerId);
+    };
+    for (const событие of ['ended', 'mute', 'unmute']) {
+      track.addEventListener(событие, обновить);
+    }
+
+    handlers.onPeerStream?.(stream, peerId);
+  };
+
   // Собеседники, которых канал нашёл, а соединиться с ними не вышло.
   // Ключ — участник, значение — вид беды из trouble.js. Пока этого не было,
   // неудача выглядела как бесконечное «жду, когда зайдут»: onPeerJoin
@@ -121,12 +162,13 @@ export const joinPublicChannels = ({
       }
 
       streamedPeers.delete(peerId);
+      peerStreams.delete(peerId);
       handlers.onPeerLeave?.(peerId);
     };
     room.onPeerStream = (stream, peerId) => {
       if (streamedPeers.has(peerId)) return;
       streamedPeers.add(peerId);
-      handlers.onPeerStream?.(stream, peerId);
+      for (const track of stream.getTracks()) takeTrack(track, peerId);
     };
 
     // Дорожку, добавленную ПОСЛЕ того как соединение встало, — а у нас это
@@ -140,9 +182,9 @@ export const joinPublicChannels = ({
     // по отдельности и в один и тот же поток, и если смолчать на второй,
     // видео не появится следом за звуком. Повторное объявление того же
     // потока ничего не стоит — комната просто перерисует плитку.
-    room.onPeerTrack = (_track, stream, peerId) => {
+    room.onPeerTrack = (track, _stream, peerId) => {
       streamedPeers.add(peerId);
-      handlers.onPeerStream?.(stream, peerId);
+      takeTrack(track, peerId);
     };
 
     return {family, relays, room, getRelaySockets};

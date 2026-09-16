@@ -11,7 +11,13 @@
 import {playThrough} from '../devices.js';
 import {explainTrouble} from './screens.js';
 
-const hasPicture = stream => stream?.getVideoTracks().some(track => track.enabled);
+// Картинка есть, когда дорожка не только заведена, но и жива. У своих
+// дорожек человек гасит enabled, у чужих сеть выставляет muted, а
+// кончившаяся дорожка не показывает ничего — все три случая тут.
+const hasPicture = stream =>
+  stream
+    ?.getVideoTracks()
+    .some(track => track.enabled && !track.muted && track.readyState !== 'ended');
 
 const tile = (id, stream, label, isSelf, speaker) => {
   const box = document.createElement('div');
