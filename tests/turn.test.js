@@ -75,3 +75,36 @@ describe('список для льда', () => {
     ]);
   });
 });
+
+describe('настройка ретранслятора ссылкой', () => {
+  const ссылка = (адрес, ключ) => {
+    const json = JSON.stringify({a: адрес, k: ключ});
+    const b64 = Buffer.from(json).toString('base64url');
+    return `https://sozvon.test/#turn=${b64}`;
+  };
+
+  it('адрес и ключ достаются из хвоста', async () => {
+    const {relayFromLink} = await import('../src/turn.js');
+
+    expect(relayFromLink(ссылка('195.58.52.143', 'ключ-сервера'))).toEqual({
+      address: '195.58.52.143',
+      secret: 'ключ-сервера',
+    });
+  });
+
+  it('обычная ссылка на разговор настройкой не считается', async () => {
+    const {relayFromLink} = await import('../src/turn.js');
+
+    expect(relayFromLink('https://sozvon.test/#1shRJ554WgkcmxgI-ERoLA')).toBe(null);
+    expect(relayFromLink('https://sozvon.test/')).toBe(null);
+  });
+
+  it('испорченная ссылка не роняет приложение', async () => {
+    const {relayFromLink} = await import('../src/turn.js');
+
+    expect(relayFromLink('https://sozvon.test/#turn=это-не-base64!!')).toBe(null);
+    expect(relayFromLink('не ссылка вовсе')).toBe(null);
+    expect(relayFromLink(ссылка('', 'ключ'))).toBe(null);
+    expect(relayFromLink(ссылка('адрес', ''))).toBe(null);
+  });
+});

@@ -52,3 +52,39 @@ export const turnConfigFor = async ({address, secret, now} = {}) => {
   const {username, credential} = await mintTicket(secret, {now});
   return urls.map(url => ({urls: url, username, credential}));
 };
+
+// ── настройка одной ссылкой ────────────────────────────────
+//
+// Вписывать адрес и ключ руками — работа, которой быть не должно. Ссылку
+// с настройкой хозяин делает у себя на сервере (см. tools/turn/установка.md)
+// и открывает один раз. Ключ при этом идёт с его машины прямо в его
+// браузер, не проходя ни через чьи руки.
+//
+// Хвост ссылки браузер на сервер не отправляет, но сама ссылка — это ключ
+// целиком. Поэтому приложение стирает её из адресной строки сразу, как
+// прочитает, и пересылать её никому нельзя.
+
+const RELAY_PREFIX = 'turn=';
+
+// atob отдаёт строку байтов, а не текст: не-латиница в ключе без разбора
+// UTF-8 молча превратилась бы в кракозябры, и ключ перестал бы подходить —
+// без единого сообщения об ошибке.
+const fromBase64Url = text => {
+  const padded = text.replace(/-/g, '+').replace(/_/g, '/');
+  const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, '='));
+  return new TextDecoder().decode(Uint8Array.from(binary, c => c.charCodeAt(0)));
+};
+
+export const relayFromLink = href => {
+  try {
+    const hash = new URL(href).hash.slice(1);
+    if (!hash.startsWith(RELAY_PREFIX)) return null;
+    const {a, k} = JSON.parse(fromBase64Url(hash.slice(RELAY_PREFIX.length)));
+    const address = String(a ?? '').trim();
+    const secret = String(k ?? '').trim();
+    return address && secret ? {address, secret} : null;
+  } catch {
+    // Испорченная или чужая ссылка — не повод падать: просто не настройка.
+    return null;
+  }
+};

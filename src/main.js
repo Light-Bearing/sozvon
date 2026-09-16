@@ -8,7 +8,7 @@ import {bindHotkeys} from './ui/hotkeys.js';
 import {createSettings} from './ui/settings.js';
 import {makeName, trimName} from './names.js';
 import {recall, remember} from './store.js';
-import {turnConfigFor} from './turn.js';
+import {relayFromLink, turnConfigFor} from './turn.js';
 
 const app = document.querySelector('#app');
 
@@ -38,6 +38,17 @@ const relay = {
   address: recall('ретранслятор') ?? '',
   secret: recall('ключ-ретранслятора') ?? '',
 };
+
+// Ссылка с настройкой — чтобы ничего не вписывать руками. Читается до
+// всего остального и тут же стирается из адреса: в хвосте лежит ключ
+// целиком, и ему незачем оставаться на виду и в истории браузера.
+const fromLink = relayFromLink(location.href);
+if (fromLink) {
+  Object.assign(relay, fromLink);
+  remember('ретранслятор', relay.address);
+  remember('ключ-ретранслятора', relay.secret);
+  history.replaceState(null, '', location.href.split('#')[0]);
+}
 
 const saveName = next => {
   given = trimName(next);
@@ -190,6 +201,10 @@ if (invited) {
   showScreen(app, 'join');
 } else {
   showScreen(app, 'start');
+  if (fromLink) {
+    const note = app.querySelector('#screen-start .note');
+    note.textContent = 'Ретранслятор настроен. Дальше — просто ссылка.';
+  }
 }
 
 // Регистрируем после загрузки страницы, чтобы не отвлекать браузер от
