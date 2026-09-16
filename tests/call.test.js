@@ -332,3 +332,58 @@ describe('когда плитка считается тёмной', () => {
     expect(тёмная(el, 'петя')).toBe(true);
   });
 });
+
+// append() для узла, который уже лежит в этом же родителе, означает
+// «вынуть и вставить заново». Для <video> это перезапуск проигрывания —
+// а перерисовок теперь несколько в секунду (уровень звука). Отсюда и
+// моргание плиток, и молчащий звук на телефоне: проигрыватель не успевает
+// начать, как его уже переставили.
+describe('плитки не переставляются в DOM понапрасну', () => {
+  const считатьВставки = tiles => {
+    let вставок = 0;
+    for (const имя of ['append', 'appendChild', 'insertBefore']) {
+      const родной = tiles[имя].bind(tiles);
+      tiles[имя] = (...a) => {
+        вставок++;
+        return родной(...a);
+      };
+    }
+    return () => вставок;
+  };
+
+  it('повторная отрисовка без изменений не трогает дерево', () => {
+    const el = root();
+    const peers = [{peerId: 'петя', stream: null, name: 'Пётр'}];
+    renderCall(el, baseState({peers}), fakeActions());
+    const вставок = считатьВставки(el.querySelector('#tiles'));
+
+    renderCall(el, baseState({peers}), fakeActions());
+    renderCall(el, baseState({peers}), fakeActions());
+
+    expect(вставок()).toBe(0);
+  });
+
+  it('смена уровня звука дерево не трогает', () => {
+    const el = root();
+    renderCall(el, baseState({mic: true, level: 0.01}), fakeActions());
+    const вставок = считатьВставки(el.querySelector('#tiles'));
+
+    for (const level of [0.2, 0.05, 0.4]) {
+      renderCall(el, baseState({mic: true, level}), fakeActions());
+    }
+
+    expect(вставок()).toBe(0);
+  });
+
+  it('новый собеседник вставляется, но чужие плитки не трогает', () => {
+    const el = root();
+    renderCall(el, baseState(), fakeActions());
+    const свой = el.querySelector('[data-peer="self"] video');
+    const вставок = считатьВставки(el.querySelector('#tiles'));
+
+    renderCall(el, baseState({peers: [{peerId: 'петя', stream: null, name: null}]}), fakeActions());
+
+    expect(вставок()).toBe(1);
+    expect(el.querySelector('[data-peer="self"] video')).toBe(свой);
+  });
+});

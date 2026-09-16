@@ -65,6 +65,7 @@ export const createRoom = async ({
   // компьютер. Без этого «меня не слышно» неотличимо от «микрофон не
   // работает», и проверить нечем.
   let level = 0;
+  let lastStep = -1;
 
   const state = () => ({
     link: secretToLink(secret),
@@ -192,6 +193,11 @@ export const createRoom = async ({
       const измерено = levelFrom(samples);
       tracker.report(SELF, измерено);
       void levels.send(измерено);
+      // Объявляем только заметные изменения: глазу хватает два десятка
+      // ступеней, а перерисовка ради неразличимой цифры не нужна никому.
+      const ступень = Math.round(Math.min(1, Math.sqrt(измерено) * 2.2) * 20);
+      if (ступень === lastStep) return;
+      lastStep = ступень;
       level = измерено;
       announce();
     };
@@ -207,6 +213,7 @@ export const createRoom = async ({
     // Микрофон выключен — полоска обязана погаснуть, а не замереть на
     // последнем значении.
     level = 0;
+    lastStep = -1;
     void audio?.close();
     audio = null;
   };

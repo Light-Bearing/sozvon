@@ -176,7 +176,12 @@ export const renderCall = (container, state, actions) => {
     const box = было.get(id) ?? makeTile(id, isSelf);
     было.delete(id);
     updateTile(box, stream, label, isSelf, state.speaker);
-    tiles.append(box);
+    // Вставляем ТОЛЬКО новые. append() для узла, который уже лежит здесь,
+    // означает «вынуть и вставить заново» — а для <video> это перезапуск
+    // проигрывания. Перерисовок теперь несколько в секунду (уровень звука),
+    // и отсюда моргание плиток и молчащий звук: проигрыватель не успевает
+    // начать, как его уже переставили.
+    if (box.parentNode !== tiles) tiles.append(box);
   }
   // Осталось в было — те, кого уже нет.
   for (const box of было.values()) {
@@ -217,7 +222,8 @@ export const renderCall = (container, state, actions) => {
   // Корень квадратный растягивает тихую часть шкалы — обычная речь живёт в
   // самом низу, и без него полоска почти не шевелилась бы.
   const level = state.mic ? Math.min(1, Math.sqrt(state.level ?? 0) * 2.2) : 0;
-  mic.style.setProperty('--level', level.toFixed(2));
+  const прежний = mic.style.getPropertyValue('--level');
+  if (прежний !== level.toFixed(2)) mic.style.setProperty('--level', level.toFixed(2));
 
   // В голосовом режиме камеру всё равно держит выключенной лестница
   // качества. Кнопка, которая на вид работает, а на деле ничего не меняет,
