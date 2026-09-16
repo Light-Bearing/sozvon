@@ -2,6 +2,7 @@
 // здесь — разрешены технические слова.
 
 import {relayUrlsFor} from '../signal/relays.js';
+import {turnConfigFor} from '../turn.js';
 
 const STUN_SERVERS = [
   'stun:stun.l.google.com:19302',
@@ -153,10 +154,65 @@ export const checkRelays = async () => {
   return checked;
 };
 
-export const renderDiagnostics = async container => {
+// Проверка своего ретранслятора: просим у него адрес и смотрим, дал ли.
+// iceTransportPolicy 'relay' отсекает всё остальное — если адрес пришёл,
+// значит сервер жив, пропуск принят и порт выделен.
+//
+// Отличить «не отвечает» от «пропуск не принят» браузер не всегда даёт:
+// событие об ошибке льда в некоторых окружениях не срабатывает вовсе.
+// Поэтому отдельно щупаем сам адрес обычным запросом STUN — на него
+// ретранслятор отвечает без всякого пропуска.
+export const checkRelayServer = async (relay, {timeoutMs = 8_000} = {}) => {
+  const turnConfig = await turnConfigFor(relay);
+  if (!turnConfig.length) return {configured: false};
+
+  const probe = async iceServers => {
+    const pc = new RTCPeerConnection({iceServers, iceTransportPolicy: 'relay'});
+    pc.createDataChannel('probe');
+    let relayCount = 0;
+    pc.onicecandidate = ({candidate}) => {
+      if (candidate?.type === 'relay') relayCount++;
+    };
+    await pc.setLocalDescription(await pc.createOffer());
+    await new Promise(resolve => setTimeout(resolve, timeoutMs));
+    pc.close();
+    return relayCount;
+  };
+
+  const withTicket = await probe(turnConfig);
+  if (withTicket > 0) return {configured: true, alive: true, accepted: true};
+
+  // Пропуск не сработал. Жив ли сам сервер — спрашиваем у него как у STUN,
+  // на это пропуск не нужен.
+  const asStun = turnConfig.map(({urls}) => ({urls: urls.replace(/^turn:/, 'stun:').split('?')[0]}));
+  const pc = new RTCPeerConnection({iceServers: asStun});
+  pc.createDataChannel('probe');
+  let srflx = 0;
+  pc.onicecandidate = ({candidate}) => {
+    if (candidate?.type === 'srflx') srflx++;
+  };
+  await pc.setLocalDescription(await pc.createOffer());
+  await new Promise(resolve => setTimeout(resolve, timeoutMs));
+  pc.close();
+
+  return {configured: true, alive: srflx > 0, accepted: false};
+};
+
+export const explainRelay = result => {
+  if (!result.configured) return 'Свой ретранслятор не настроен — звонок идёт только напрямую.';
+  if (result.accepted) return 'Ретранслятор работает: адрес выделен, пропуск принят.';
+  if (result.alive) return 'Ретранслятор отвечает, но пропуск не принял. Проверьте ключ в настройках.';
+  return 'Ретранслятор не отвечает. Проверьте адрес, порт 3478 и брандмауэр на машине.';
+};
+
+export const renderDiagnostics = async (container, relay) => {
   container.textContent = 'Проверяю…';
 
-  const [nat, relays] = await Promise.all([checkNat(), checkRelays()]);
+  const [nat, relays, ownRelay] = await Promise.all([
+    checkNat(),
+    checkRelays(),
+    checkRelayServer(relay ?? {}),
+  ]);
 
   const alive = relays.filter(r => r.ok);
   const families = new Set(alive.map(r => r.family));
@@ -172,6 +228,9 @@ export const renderDiagnostics = async container => {
   add('h2', 'Как вас видно снаружи');
   add('p', nat.verdict);
   if (nat.external) add('p', `Внешний адрес: ${nat.external}`);
+
+  add('h2', 'Свой ретранслятор');
+  add('p', explainRelay(ownRelay));
 
   add('h2', 'Каналы для рукопожатия');
   add(

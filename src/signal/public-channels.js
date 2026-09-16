@@ -39,7 +39,16 @@ export const familiesFor = (names, all = FAMILIES) =>
 // families — необязательный параметр только для тестов: подсовывает
 // поддельные {family, join} вместо трёх настоящих пакетов. Вызывающие из
 // приложения его не передают и получают FAMILIES по умолчанию.
-export const joinPublicChannels = ({roomId, password, handlers, families = FAMILIES}) => {
+// turnConfig — список ретрансляторов для льда. Библиотека дописывает его к
+// своим STUN-серверам, а не заменяет их: прямой путь по-прежнему пробуется
+// первым, ретранслятор включается только когда прямого нет.
+export const joinPublicChannels = ({
+  roomId,
+  password,
+  handlers,
+  families = FAMILIES,
+  turnConfig,
+}) => {
   const registry = createPeerRegistry();
 
   // Участники, чей поток уже пропущен наверх. Второй и далее поток от
@@ -65,7 +74,12 @@ export const joinPublicChannels = ({roomId, password, handlers, families = FAMIL
   const channels = families.map(({family, join, getRelaySockets = () => ({})}) => {
     const relays = relayUrlsFor(family);
     const room = join(
-      {appId: APP_ID, password, relayConfig: {urls: relays}},
+      {
+        appId: APP_ID,
+        password,
+        relayConfig: {urls: relays},
+        ...(turnConfig?.length ? {turnConfig} : {}),
+      },
       roomId,
       {
         onJoinError: ({peerId, error}) => {

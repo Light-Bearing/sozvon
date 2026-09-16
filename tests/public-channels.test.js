@@ -452,3 +452,34 @@ describe('публичные каналы: жалобы на неудачу', ()
     expect(connection.troubles()).toEqual([]);
   });
 });
+
+describe('ретранслятор доходит до библиотеки', () => {
+  const собрать = turnConfig => {
+    const настройки = [];
+    const families = FAMILY_NAMES.map(family => ({
+      family,
+      join: config => {
+        настройки.push(config);
+        return createFakeRoom().room;
+      },
+      getRelaySockets: () => ({}),
+    }));
+    joinPublicChannels({roomId: 'r', password: 'p', handlers: {}, families, turnConfig});
+    return настройки;
+  };
+
+  it('список ретрансляторов попадает в настройку каждого семейства', () => {
+    const turnConfig = [{urls: 'turn:host:3478', username: 'u', credential: 'c'}];
+
+    expect(собрать(turnConfig).map(c => c.turnConfig)).toEqual([
+      turnConfig,
+      turnConfig,
+      turnConfig,
+    ]);
+  });
+
+  it('без ретранслятора поля нет вовсе — библиотека берёт свои умолчания', () => {
+    for (const config of собрать(undefined)) expect('turnConfig' in config).toBe(false);
+    for (const config of собрать([])) expect('turnConfig' in config).toBe(false);
+  });
+});

@@ -629,3 +629,43 @@ select.field-input {
     padding-block-end: max(1.5rem, env(safe-area-inset-bottom));
   }
 }
+
+/* Раскрывашка для того, что обычному человеку видеть незачем */
+
+.fold {
+  margin-block-start: 1.25rem;
+  padding-block-start: 1.25rem;
+  border-block-start: 1px solid var(--line);
+}
+
+.fold-head {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--dim);
+  list-style: none;
+}
+
+.fold-head::-webkit-details-marker { display: none; }
+
+.fold-head::before {
+  content: '+';
+  display: inline-block;
+  width: 1rem;
+  color: var(--faint);
+}
+
+.fold[open] .fold-head::before { content: '\2212'; }
+.fold-head:hover { color: var(--text); }
+
+.fold-head:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+  border-radius: 0.25rem;
+}
+
+.fold-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--faint);
+}

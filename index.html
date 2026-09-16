@@ -139,6 +139,28 @@
               <select id="pick-speaker" class="field-input"></select>
             </label>
 
+            <details class="fold">
+              <summary class="fold-head">Свой ретранслятор</summary>
+              <p class="fold-note">
+                Нужен, когда прямой путь между устройствами не складывается.
+                Достаточно, чтобы он был у одного: собеседникам настраивать
+                ничего не придётся.
+              </p>
+              <label class="field">
+                <span class="field-label">Адрес</span>
+                <input id="relay-address" class="field-input" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="195.58.52.143" />
+              </label>
+              <label class="field">
+                <span class="field-label">Ключ</span>
+                <input id="relay-secret" class="field-input" type="password" autocomplete="off" />
+              </label>
+              <p class="fold-note">
+                Ключ остаётся в этом браузере. Наружу уходят только короткие
+                пропуска — по одному на разговор.
+              </p>
+            </details>
+
             <p class="sheet-note" id="settings-note" hidden>
               Названия устройств браузер покажет, когда вы включите микрофон
               или камеру.

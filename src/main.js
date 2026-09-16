@@ -8,6 +8,7 @@ import {bindHotkeys} from './ui/hotkeys.js';
 import {createSettings} from './ui/settings.js';
 import {makeName, trimName} from './names.js';
 import {recall, remember} from './store.js';
+import {turnConfigFor} from './turn.js';
 
 const app = document.querySelector('#app');
 
@@ -31,6 +32,13 @@ const picked = {
 
 // Пустое поле — это отказ от своего имени, а не ошибка ввода: возвращаемся
 // к подсказке и забываем сохранённое.
+// Свой ретранслятор. Ключ живёт только здесь, в этом браузере, и наружу
+// уходит лишь короткими пропусками — по одному на разговор.
+const relay = {
+  address: recall('ретранслятор') ?? '',
+  secret: recall('ключ-ретранслятора') ?? '',
+};
+
 const saveName = next => {
   given = trimName(next);
   myName = given ?? HINT;
@@ -96,9 +104,14 @@ const enter = async secret => {
   location.hash = secret;
   showScreen(app, 'call');
   try {
+    // Пропуск выписывается на каждый звонок заново и живёт полсуток.
+    // Пустая настройка даёт пустой список — звонок пойдёт как раньше.
+    const turnConfig = await turnConfigFor(relay);
+
     room = await createRoom({
       secret,
       families,
+      turnConfig,
       // Намерение по микрофону/камере целиком живёт в room.js (createRoom
       // заводит его заново на каждый звонок) и приходит сюда через state —
       // отдельной копии в main.js больше нет, поэтому её нечему рассогласовать
@@ -117,6 +130,11 @@ const settings = createSettings(app, {
   currentName: () => given ?? '',
   nameHint: () => HINT,
   currentDevices: () => picked,
+  currentRelay: () => relay,
+  setRelay: (field, value) => {
+    relay[field] = value.trim();
+    remember({address: 'ретранслятор', secret: 'ключ-ретранслятора'}[field], relay[field] || null);
+  },
   setName: next => {
     room?.setName(saveName(next));
     paintNameFields();
@@ -157,7 +175,7 @@ for (const button of app.querySelectorAll('[data-diagnostics]')) {
   button.onclick = () => {
     screenBeforeDiagnostics = app.querySelector('#screen-failed').hidden ? 'start' : 'failed';
     showScreen(app, 'diagnostics');
-    void renderDiagnostics(app.querySelector('#diagnostics-body'));
+    void renderDiagnostics(app.querySelector('#diagnostics-body'), relay);
   };
 }
 

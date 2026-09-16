@@ -19,6 +19,7 @@ export const createRoom = async ({
   ladder = createLadder(),
   families,
   name,
+  turnConfig,
 }) => {
   const peers = new Map();
   // Своё имя и имена собеседников. Своё — то, что дали снаружи (main.js
@@ -88,6 +89,7 @@ export const createRoom = async ({
     connection = await connectFn({
       secret,
       families,
+      turnConfig,
       onQuiet: isQuiet => {
         if (quiet === isQuiet) return;
         quiet = isQuiet;

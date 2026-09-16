@@ -50,9 +50,15 @@ export const createSettings = (root, actions) => {
   const panel = root.querySelector('#settings');
   const nameInput = root.querySelector('#name-input');
 
+  const relayAddress = root.querySelector('#relay-address');
+  const relaySecret = root.querySelector('#relay-secret');
+
   const open = async () => {
     nameInput.placeholder = actions.nameHint();
     nameInput.value = actions.currentName();
+    const relay = actions.currentRelay?.() ?? {};
+    relayAddress.value = relay.address ?? '';
+    relaySecret.value = relay.secret ?? '';
     renderDevices(panel, await listDevices(), actions.currentDevices());
     panel.hidden = false;
     nameInput.focus();
@@ -71,6 +77,11 @@ export const createSettings = (root, actions) => {
     root.querySelector(`#pick-${kind}`).onchange = event =>
       actions.setDevice(kind, event.target.value);
   }
+
+  // Ретранслятор применяется со следующего звонка: лёд узнаёт о серверах
+  // при создании соединения, и менять их у живого смысла нет.
+  relayAddress.oninput = () => actions.setRelay?.('address', relayAddress.value);
+  relaySecret.oninput = () => actions.setRelay?.('secret', relaySecret.value);
 
   root.querySelector('#settings-close').onclick = close;
   // Нажатие мимо карточки закрывает — обычное поведение таких панелей.

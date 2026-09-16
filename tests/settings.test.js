@@ -183,3 +183,56 @@ describe('панель настроек', () => {
     expect(el.querySelector('#settings').hidden).toBe(false);
   });
 });
+
+describe('свой ретранслятор в настройках', () => {
+  const open = () => {
+    const el = root();
+    const relay = {address: '', secret: ''};
+    const actions = {
+      currentName: () => '',
+      nameHint: () => 'Сонная Выдра',
+      currentDevices: () => ({}),
+      currentRelay: () => relay,
+      setName: vi.fn(),
+      setDevice: vi.fn(),
+      setRelay: vi.fn((field, value) => (relay[field] = value)),
+    };
+    return {el, relay, actions, panel: createSettings(el, actions)};
+  };
+
+  it('спрятан под раскрывашкой — обычному человеку его видеть незачем', () => {
+    const {el} = open();
+
+    expect(el.querySelector('.fold').hasAttribute('open')).toBe(false);
+    expect(el.querySelector('#relay-address')).not.toBe(null);
+  });
+
+  it('введённое доходит наверх и там же остаётся', async () => {
+    const {el, relay, actions, panel} = open();
+    await panel.open();
+
+    const адрес = el.querySelector('#relay-address');
+    адрес.value = '195.58.52.143';
+    адрес.dispatchEvent(new Event('input'));
+
+    expect(actions.setRelay).toHaveBeenCalledWith('address', '195.58.52.143');
+    expect(relay.address).toBe('195.58.52.143');
+  });
+
+  it('ключ вводится скрытым полем', () => {
+    const {el} = open();
+
+    expect(el.querySelector('#relay-secret').type).toBe('password');
+  });
+
+  it('при открытии показывает уже настроенное', async () => {
+    const {el, relay, panel} = open();
+    relay.address = 'дом.example';
+    relay.secret = 'тайна';
+
+    await panel.open();
+
+    expect(el.querySelector('#relay-address').value).toBe('дом.example');
+    expect(el.querySelector('#relay-secret').value).toBe('тайна');
+  });
+});
