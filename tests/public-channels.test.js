@@ -20,6 +20,7 @@ const createFakeRoom = () => {
     onPeerJoin: null,
     onPeerLeave: null,
     onPeerStream: null,
+    onPeerTrack: null,
     getPeers: () => Object.fromEntries(peers),
     addStream: (stream, options = {}) =>
       addStreamCalls.push({stream, target: options.target}),
@@ -72,6 +73,7 @@ const createFakeRoom = () => {
       room.onPeerLeave?.(peerId);
     },
     stream: (stream, peerId) => room.onPeerStream?.(stream, peerId),
+    track: (track, stream, peerId) => room.onPeerTrack?.(track, stream, peerId),
   };
 };
 
@@ -481,5 +483,54 @@ describe('ретранслятор доходит до библиотеки', ()
   it('без ретранслятора поля нет вовсе — библиотека берёт свои умолчания', () => {
     for (const config of собрать(undefined)) expect('turnConfig' in config).toBe(false);
     for (const config of собрать([])) expect('turnConfig' in config).toBe(false);
+  });
+});
+
+// Дорожку, добавленную ПОСЛЕ того как соединение встало (человек включил
+// микрофон уже внутри разговора), библиотека отдаёт через onPeerTrack, а не
+// onPeerStream. Мы слушали только второе — и медиа собеседника доходило до
+// соединения, но не доходило до экрана.
+describe('дорожки, пришедшие после соединения', () => {
+  let fakes;
+  let handlers;
+
+  beforeEach(() => {
+    fakes = Object.fromEntries(FAMILY_NAMES.map(name => [name, createFakeRoom()]));
+    const families = FAMILY_NAMES.map(family => ({
+      family,
+      join: () => fakes[family].room,
+      getRelaySockets: () => fakes[family].sockets,
+    }));
+    handlers = {onPeerJoin: vi.fn(), onPeerStream: vi.fn(), onPeerLeave: vi.fn()};
+    joinPublicChannels({roomId: 'r', password: 'p', handlers, families});
+  });
+
+  it('поток доходит наверх', () => {
+    fakes.torrent.join('петя');
+    const stream = {id: 'поток-пети'};
+
+    fakes.torrent.track({kind: 'audio'}, stream, 'петя');
+
+    expect(handlers.onPeerStream).toHaveBeenCalledWith(stream, 'петя');
+  });
+
+  it('вторая дорожка того же потока тоже объявляется — иначе видео не появится следом за звуком', () => {
+    fakes.torrent.join('петя');
+    const stream = {id: 'поток-пети'};
+
+    fakes.torrent.track({kind: 'audio'}, stream, 'петя');
+    fakes.torrent.track({kind: 'video'}, stream, 'петя');
+
+    expect(handlers.onPeerStream).toHaveBeenCalledTimes(2);
+  });
+
+  it('поток, уже пришедший через onPeerStream, не мешает дорожкам', () => {
+    fakes.torrent.join('петя');
+    const stream = {id: 'поток-пети'};
+
+    fakes.torrent.stream(stream, 'петя');
+    fakes.torrent.track({kind: 'video'}, stream, 'петя');
+
+    expect(handlers.onPeerStream).toHaveBeenCalledTimes(2);
   });
 });
