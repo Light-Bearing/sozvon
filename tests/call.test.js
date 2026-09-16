@@ -161,3 +161,71 @@ describe('беда со связью названа на экране', () => {
     expect(el.querySelector('#waiting').hidden).toBe(false);
   });
 });
+
+// Плитки пересобирались заново на каждое изменение состояния — а их в
+// разговоре много: чужая дорожка, чужое имя, своё нажатие, такт лестницы.
+// Каждая пересборка убивает <video> и создаёт новый, то есть обрывает и
+// картинку, и звук. На своей машине это мелькание, на телефоне — «ничего
+// не слышно» и «видео пропадает при переключении микрофона».
+describe('плитки переживают перерисовку', () => {
+  const peer = (overrides = {}) => ({peerId: 'петя', stream: null, name: null, ...overrides});
+
+  it('тот же собеседник — тот же узел video, а не новый', () => {
+    const el = root();
+    renderCall(el, baseState({peers: [peer()]}), fakeActions());
+    const было = el.querySelector('[data-peer="петя"] video');
+
+    renderCall(el, baseState({peers: [peer({name: 'Пётр'})]}), fakeActions());
+
+    expect(el.querySelector('[data-peer="петя"] video')).toBe(было);
+  });
+
+  it('имя меняется на месте', () => {
+    const el = root();
+    renderCall(el, baseState({peers: [peer()]}), fakeActions());
+
+    renderCall(el, baseState({peers: [peer({name: 'Пётр'})]}), fakeActions());
+
+    expect(el.querySelector('[data-peer="петя"] .tile-name').textContent).toBe('Пётр');
+  });
+
+  it('srcObject не переставляется, пока поток тот же', () => {
+    const el = root();
+    const stream = {getVideoTracks: () => [], getAudioTracks: () => []};
+    renderCall(el, baseState({peers: [peer({stream})]}), fakeActions());
+    const video = el.querySelector('[data-peer="петя"] video');
+    let присвоений = 0;
+    let текущий = video.srcObject;
+    Object.defineProperty(video, 'srcObject', {
+      get: () => текущий,
+      set: v => {
+        присвоений++;
+        текущий = v;
+      },
+    });
+
+    renderCall(el, baseState({peers: [peer({stream})]}), fakeActions());
+
+    expect(присвоений).toBe(0);
+  });
+
+  it('ушедший собеседник уносит свою плитку', () => {
+    const el = root();
+    renderCall(el, baseState({peers: [peer()]}), fakeActions());
+
+    renderCall(el, baseState({peers: []}), fakeActions());
+
+    expect(el.querySelector('[data-peer="петя"]')).toBe(null);
+    expect(el.querySelectorAll('#tiles .tile')).toHaveLength(1);
+  });
+
+  it('свою плитку тоже не пересоздаём', () => {
+    const el = root();
+    renderCall(el, baseState(), fakeActions());
+    const было = el.querySelector('[data-peer="self"] video');
+
+    renderCall(el, baseState({mic: false}), fakeActions());
+
+    expect(el.querySelector('[data-peer="self"] video')).toBe(было);
+  });
+});

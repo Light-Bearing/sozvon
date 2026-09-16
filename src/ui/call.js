@@ -19,32 +19,58 @@ const hasPicture = stream =>
     ?.getVideoTracks()
     .some(track => track.enabled && !track.muted && track.readyState !== 'ended');
 
-const tile = (id, stream, label, isSelf, speaker) => {
+// Плитку НЕ пересоздаём, если она уже есть. Раньше весь список собирался
+// заново на каждое изменение состояния — а их в разговоре много: чужая
+// дорожка, чужое имя, своё нажатие, такт лестницы. Каждая пересборка
+// убивает <video> и создаёт новый, то есть обрывает и картинку, и звук.
+// На своей машине это мелькание, на телефоне — «ничего не слышно» и
+// «видео пропадает, когда трогаешь микрофон».
+const makeTile = (id, isSelf) => {
   const box = document.createElement('div');
   box.className = isSelf ? 'tile tile--self' : 'tile';
   box.dataset.peer = id;
-
-  if (!hasPicture(stream)) {
-    box.classList.add('tile--dark');
-    box.dataset.initial = label.slice(0, 1);
-  }
 
   const video = document.createElement('video');
   video.autoplay = true;
   video.playsInline = true;
   // Себя слушать не надо — иначе эхо и вой.
   video.muted = isSelf;
-  if (stream) video.srcObject = stream;
+
+  const name = document.createElement('span');
+  name.className = 'tile-name';
+
+  box.append(video, name);
+  return box;
+};
+
+const updateTile = (box, stream, label, isSelf, speaker) => {
+  const video = box.querySelector('video');
+  // Присваиваем srcObject только когда поток и вправду сменился: лишнее
+  // присваивание перезапускает проигрывание.
+  const source = stream ?? null;
+  if (video.srcObject !== source) {
+    video.srcObject = source;
+    // Браузеры телефонов не начинают играть со звуком сами по себе.
+    // Отказ — не беда: человек уже нажимал «Войти», и следующее касание
+    // экрана всё запустит. play() возвращает обещание не везде (в разметке
+    // без настоящего проигрывателя — вообще ничего), поэтому и вызов, и
+    // отказ обёрнуты.
+    try {
+      const идёт = video.play?.();
+      if (идёт && typeof идёт.catch === 'function') идёт.catch(() => {});
+    } catch {
+      // Проигрыватель не готов — следующая перерисовка попробует снова.
+    }
+  }
   // Вывод звука выбирается у проигрывателя, а не у потока, и умеют это не
   // все браузеры — playThrough честно ничего не делает там, где нельзя.
   if (!isSelf) void playThrough(video, speaker);
 
-  const name = document.createElement('span');
-  name.className = 'tile-name';
-  name.textContent = label;
+  box.classList.toggle('tile--dark', !hasPicture(stream));
+  box.dataset.initial = label.slice(0, 1);
 
-  box.append(video, name);
-  return box;
+  const name = box.querySelector('.tile-name');
+  if (name.textContent !== label) name.textContent = label;
 };
 
 // Собеседник назвался — зовём как просил. Не назвался (имя ещё не дошло
@@ -90,14 +116,29 @@ export const renderCall = (container, state, actions) => {
   const backdropSource = hasPicture(state.self) ? state.self : null;
   if (backdrop.srcObject !== backdropSource) backdrop.srcObject = backdropSource;
 
-  container.querySelector('#tiles').replaceChildren(
-    // На своей плитке — своё имя, а не «Вы»: это ровно то, что видят
-    // остальные, и другого места проверить его нет.
-    tile('self', state.self, state.name ?? 'Вы', true, state.speaker),
-    ...state.peers.map(({peerId, stream, name}, i) =>
-      tile(peerId, stream, nameFor(name, i, state.peers.length), false, state.speaker),
-    ),
-  );
+  // На своей плитке — своё имя, а не «Вы»: это ровно то, что видят
+  // остальные, и другого места проверить его нет.
+  const wanted = [
+    {id: 'self', stream: state.self, label: state.name ?? 'Вы', isSelf: true},
+    ...state.peers.map(({peerId, stream, name}, i) => ({
+      id: peerId,
+      stream,
+      label: nameFor(name, i, state.peers.length),
+      isSelf: false,
+    })),
+  ];
+
+  const tiles = container.querySelector('#tiles');
+  const было = new Map([...tiles.children].map(box => [box.dataset.peer, box]));
+
+  for (const {id, stream, label, isSelf} of wanted) {
+    const box = было.get(id) ?? makeTile(id, isSelf);
+    было.delete(id);
+    updateTile(box, stream, label, isSelf, state.speaker);
+    tiles.append(box);
+  }
+  // Осталось в было — те, кого уже нет.
+  for (const box of было.values()) box.remove();
 
   // Беда с соединением — единственное, что может вывести карточку обратно
   // на экран, когда собеседники уже есть: если к кому-то не достучаться,
