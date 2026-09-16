@@ -114,6 +114,10 @@
 
         <div id="tiles" class="tiles"></div>
 
+        <button id="sound-blocked" class="sound-blocked" type="button" hidden>
+          Нажмите, чтобы включить звук
+        </button>
+
         <div id="settings" class="sheet" hidden>
           <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
             <p class="sheet-title" id="settings-title">Настройки</p>
@@ -138,6 +142,8 @@
               <span class="field-label">Звук идёт в</span>
               <select id="pick-speaker" class="field-input"></select>
             </label>
+
+            <p class="sheet-flow" id="flow" hidden></p>
 
             <details class="fold">
               <summary class="fold-head">Свой ретранслятор</summary>

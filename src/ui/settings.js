@@ -5,6 +5,7 @@
 // когда воткнули наушники.
 
 import {canChooseSpeaker, listDevices} from '../devices.js';
+import {describeFlow} from '../flow.js';
 
 // Заполняет один выпадающий список. Выбранное берём из чужого выбора, а не
 // из того, что уже стоит в разметке: список пересобирается на каждом
@@ -53,6 +54,17 @@ export const createSettings = (root, actions) => {
   const relayAddress = root.querySelector('#relay-address');
   const relaySecret = root.querySelector('#relay-secret');
 
+  const flowLine = root.querySelector('#flow');
+  let flowTimer = null;
+
+  // Живой расход обновляем, пока панель открыта: цифра, застывшая на
+  // мгновении открытия, обманет сильнее, чем её отсутствие.
+  const showFlow = () => {
+    const text = describeFlow(actions.currentFlow?.());
+    flowLine.hidden = !text;
+    flowLine.textContent = text;
+  };
+
   const open = async () => {
     nameInput.placeholder = actions.nameHint();
     nameInput.value = actions.currentName();
@@ -61,11 +73,15 @@ export const createSettings = (root, actions) => {
     relaySecret.value = relay.secret ?? '';
     renderDevices(panel, await listDevices(), actions.currentDevices());
     panel.hidden = false;
+    showFlow();
+    flowTimer = setInterval(showFlow, 2000);
     nameInput.focus();
   };
 
   const close = () => {
     panel.hidden = true;
+    clearInterval(flowTimer);
+    flowTimer = null;
   };
 
   // Имя применяем на каждый ввод: человек видит его на своей плитке сразу

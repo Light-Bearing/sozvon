@@ -92,17 +92,22 @@ const invited = linkToSecret(location.href);
 // Вывод звука — как раз такое: он переключается у проигрывателя, а не у
 // потока, поэтому дописывается к состоянию здесь, а не живёт в room.js.
 const paint = state =>
-  renderCall(app.querySelector('#screen-call'), {...state, speaker: picked.speaker}, {
-    toggleMicrophone: () => room.setMicrophone(!state.mic),
-    toggleCamera: () => room.setCamera(!state.cam),
-    hangUp: async () => {
-      await room.leave();
-      room = null;
-      settings.close();
-      location.hash = '';
-      showScreen(app, 'start');
+  renderCall(
+    app.querySelector('#screen-call'),
+    // Готов ли ретранслятор — знает только страница: ключ живёт здесь.
+    {...state, speaker: picked.speaker, relayReady: Boolean(relay.address && relay.secret)},
+    {
+      toggleMicrophone: () => room.setMicrophone(!state.mic),
+      toggleCamera: () => room.setCamera(!state.cam),
+      hangUp: async () => {
+        await room.leave();
+        room = null;
+        settings.close();
+        location.hash = '';
+        showScreen(app, 'start');
+      },
     },
-  });
+  );
 
 const fail = error => {
   const {title, advice} = explainFailure(error);
@@ -142,6 +147,7 @@ const settings = createSettings(app, {
   nameHint: () => HINT,
   currentDevices: () => picked,
   currentRelay: () => relay,
+  currentFlow: () => room?.state().flow ?? null,
   setRelay: (field, value) => {
     relay[field] = value.trim();
     remember({address: 'ретранслятор', secret: 'ключ-ретранслятора'}[field], relay[field] || null);

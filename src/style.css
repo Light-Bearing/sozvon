@@ -672,3 +672,54 @@ select.field-input {
   line-height: 1.5;
   color: var(--faint);
 }
+
+/* Браузеры телефонов не начинают играть со звуком сами. Молчаливый отказ
+   неотличим от «собеседник молчит», поэтому спрашиваем прямо. */
+.sound-blocked {
+  grid-area: main;
+  z-index: 3;
+  justify-self: center;
+  align-self: start;
+  margin-block-start: var(--pad);
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.8);
+  animation: lift 0.3s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+.sheet-flow {
+  margin: 1rem 0 0;
+  font-family: 'Martian Mono', ui-monospace, monospace;
+  font-size: 0.6875rem;
+  line-height: 1.8;
+  letter-spacing: -0.03em;
+  color: var(--dim);
+  white-space: pre-line;
+}
+
+/* Уровень звука прямо на кнопке микрофона. Кольцо растёт от голоса —
+   значит компьютер вас слышит. Молчит кольцо при включённом микрофоне —
+   значит не слышит, и это видно сразу, без всяких проверок. */
+#mic {
+  --level: 0;
+  position: relative;
+}
+
+#mic::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 calc(var(--level) * 0.55rem) color-mix(in oklab, var(--live) 45%, transparent);
+  transition: box-shadow 0.12s linear;
+  pointer-events: none;
+}
+
+#mic[aria-pressed='false']::before { box-shadow: none; }

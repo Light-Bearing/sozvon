@@ -8,6 +8,7 @@ import {secretToLink} from './room-secret.js';
 import {createStatsTracker} from './stats.js';
 import {createSpeakingTracker, levelFrom} from './speaking.js';
 import {makeName, trimName} from './names.js';
+import {createFlowTracker} from './flow.js';
 
 const STATS_EVERY_MS = 2_000;
 
@@ -55,13 +56,25 @@ export const createRoom = async ({
   // именно она случилась.
   let troubles = [];
 
+  // Сколько сейчас идёт звука и картинки. «Дорожка есть» и «звук идёт» —
+  // разные вещи, и со стороны их не различить; пусть различает приложение.
+  const flowTracker = createFlowTracker();
+  let flow = null;
+
+  // Свой уровень звука — чтобы человек видел, слышит ли его собственный
+  // компьютер. Без этого «меня не слышно» неотличимо от «микрофон не
+  // работает», и проверить нечем.
+  let level = 0;
+
   const state = () => ({
     link: secretToLink(secret),
     quiet,
     troubles,
+    flow,
     step,
     self: media.current(),
     mic: microphoneWanted,
+    level,
     cam: cameraWanted,
     name: myName,
     devices: media.chosen?.() ?? {microphone: null, camera: null},
@@ -176,9 +189,11 @@ export const createRoom = async ({
 
     const listen = () => {
       analyser.getFloatTimeDomainData(samples);
-      const level = levelFrom(samples);
-      tracker.report(SELF, level);
-      void levels.send(level);
+      const измерено = levelFrom(samples);
+      tracker.report(SELF, измерено);
+      void levels.send(измерено);
+      level = измерено;
+      announce();
     };
     listener = setInterval(listen, 300);
   };
@@ -189,6 +204,9 @@ export const createRoom = async ({
   const stopLevelMeter = () => {
     clearInterval(listener);
     listener = null;
+    // Микрофон выключен — полоска обязана погаснуть, а не замереть на
+    // последнем значении.
+    level = 0;
     void audio?.close();
     audio = null;
   };
@@ -339,6 +357,7 @@ export const createRoom = async ({
         // src/stats.js) — досчитывать через пропуск не придётся.
       }
     }
+    flow = flowTracker.update(peerReports) ?? flow;
     const {loss, queueSeconds} = stats.summarize(peerReports);
     await applyStep(ladder.update({peerCount: peers.size + 1, loss, queueSeconds}));
   };

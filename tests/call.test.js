@@ -229,3 +229,106 @@ describe('плитки переживают перерисовку', () => {
     expect(el.querySelector('[data-peer="self"] video')).toBe(было);
   });
 });
+
+// «Меня не слышно» неотличимо от «микрофон не работает», пока человек не
+// видит, доходит ли звук хотя бы до его собственного компьютера.
+describe('уровень звука на кнопке микрофона', () => {
+  const уровень = el => Number(el.querySelector('#mic').style.getPropertyValue('--level'));
+
+  it('тишина — кольца нет', () => {
+    const el = root();
+    renderCall(el, baseState({mic: true, level: 0}), fakeActions());
+
+    expect(уровень(el)).toBe(0);
+  });
+
+  it('голос поднимает кольцо', () => {
+    const el = root();
+    renderCall(el, baseState({mic: true, level: 0.05}), fakeActions());
+
+    expect(уровень(el)).toBeGreaterThan(0);
+  });
+
+  it('громче — выше, но не выше единицы', () => {
+    const el = root();
+    renderCall(el, baseState({mic: true, level: 0.02}), fakeActions());
+    const тихо = уровень(el);
+    renderCall(el, baseState({mic: true, level: 0.3}), fakeActions());
+    const громко = уровень(el);
+
+    expect(громко).toBeGreaterThan(тихо);
+    expect(уровень(el)).toBeLessThanOrEqual(1);
+    renderCall(el, baseState({mic: true, level: 1}), fakeActions());
+    expect(уровень(el)).toBe(1);
+  });
+
+  it('выключенный микрофон не светится, каким бы ни был последний замер', () => {
+    const el = root();
+    renderCall(el, baseState({mic: false, level: 0.5}), fakeActions());
+
+    expect(уровень(el)).toBe(0);
+  });
+});
+
+// Признак «глухая» у чужой дорожки означает «прямо сейчас нет данных» и
+// включается сам собой при пересогласовании — а кадры при этом идут.
+// Я на это однажды купился и затемнил плитку поверх работающего видео.
+describe('когда плитка считается тёмной', () => {
+  const дорожка = (over = {}) => ({
+    kind: 'video',
+    enabled: true,
+    muted: false,
+    readyState: 'live',
+    ...over,
+  });
+  const поток = (...tracks) => ({
+    getVideoTracks: () => tracks.filter(t => t.kind === 'video'),
+    getAudioTracks: () => tracks.filter(t => t.kind === 'audio'),
+    getTracks: () => tracks,
+  });
+  const тёмная = (el, кто) => el.querySelector(`[data-peer="${кто}"]`).classList.contains('tile--dark');
+
+  it('живая дорожка — картинка есть', () => {
+    const el = root();
+    renderCall(el, baseState({peers: [{peerId: 'петя', stream: поток(дорожка()), name: null}]}), fakeActions());
+
+    expect(тёмная(el, 'петя')).toBe(false);
+  });
+
+  it('глухая, но живая — всё равно картинка: кадры идут', () => {
+    const el = root();
+    const peers = [{peerId: 'петя', stream: поток(дорожка({muted: true})), name: null}];
+
+    renderCall(el, baseState({peers}), fakeActions());
+
+    expect(тёмная(el, 'петя')).toBe(false);
+  });
+
+  it('кончившаяся дорожка — картинки нет', () => {
+    const el = root();
+    const peers = [{peerId: 'петя', stream: поток(дорожка({readyState: 'ended'})), name: null}];
+
+    renderCall(el, baseState({peers}), fakeActions());
+
+    expect(тёмная(el, 'петя')).toBe(true);
+  });
+
+  it('погашенная хозяином — картинки нет', () => {
+    const el = root();
+    const peers = [{peerId: 'петя', stream: поток(дорожка({enabled: false})), name: null}];
+
+    renderCall(el, baseState({peers}), fakeActions());
+
+    expect(тёмная(el, 'петя')).toBe(true);
+  });
+
+  it('только звук — картинки нет', () => {
+    const el = root();
+    const звук = {kind: 'audio', enabled: true, muted: false, readyState: 'live'};
+    const peers = [{peerId: 'петя', stream: поток(звук), name: null}];
+
+    renderCall(el, baseState({peers}), fakeActions());
+
+    expect(тёмная(el, 'петя')).toBe(true);
+  });
+});

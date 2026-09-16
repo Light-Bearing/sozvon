@@ -11,13 +11,18 @@
 import {playThrough} from '../devices.js';
 import {explainTrouble} from './screens.js';
 
-// Картинка есть, когда дорожка не только заведена, но и жива. У своих
-// дорожек человек гасит enabled, у чужих сеть выставляет muted, а
-// кончившаяся дорожка не показывает ничего — все три случая тут.
+// Картинка есть, когда дорожка жива и не погашена хозяином.
+//
+// Про muted намеренно НЕ спрашиваем, хотя соблазн велик. У чужой дорожки
+// этот признак означает «прямо сейчас нет данных» и сам собой включается
+// при пересогласовании — а кадры при этом идут. Один раз я на это купился
+// и затемнил плитку поверх работающего видео.
+//
+// Выключенная камера собеседника сюда доходит другим путём, надёжным:
+// дорожка снимается с соединения, кончается, и мы убираем её из потока
+// (см. onPeerTrack в src/signal/public-channels.js).
 const hasPicture = stream =>
-  stream
-    ?.getVideoTracks()
-    .some(track => track.enabled && !track.muted && track.readyState !== 'ended');
+  stream?.getVideoTracks().some(track => track.enabled && track.readyState !== 'ended');
 
 // Плитку НЕ пересоздаём, если она уже есть. Раньше весь список собирался
 // заново на каждое изменение состояния — а их в разговоре много: чужая
@@ -43,6 +48,29 @@ const makeTile = (id, isSelf) => {
   return box;
 };
 
+// Браузеры телефонов не начинают играть со звуком сами. Отказ приходит
+// молча и выглядит ровно как «собеседник молчит» — поэтому спрашиваем
+// прямо, одной кнопкой на весь экран.
+const blocked = new Set();
+
+const askForSound = container => {
+  const button = container.querySelector('#sound-blocked');
+  if (!button) return;
+  button.hidden = blocked.size === 0;
+  button.onclick = () => {
+    blocked.clear();
+    for (const video of container.querySelectorAll('#tiles video')) {
+      try {
+        const идёт = video.play?.();
+        if (идёт && typeof идёт.catch === 'function') идёт.catch(() => {});
+      } catch {
+        // Не вышло — кнопка вернётся на следующей перерисовке.
+      }
+    }
+    button.hidden = true;
+  };
+};
+
 const updateTile = (box, stream, label, isSelf, speaker) => {
   const video = box.querySelector('video');
   // Присваиваем srcObject только когда поток и вправду сменился: лишнее
@@ -57,14 +85,27 @@ const updateTile = (box, stream, label, isSelf, speaker) => {
     // отказ обёрнуты.
     try {
       const идёт = video.play?.();
-      if (идёт && typeof идёт.catch === 'function') идёт.catch(() => {});
+      if (идёт && typeof идёт.catch === 'function') {
+        идёт.then(
+          () => blocked.delete(box.dataset.peer),
+          () => {
+            if (!isSelf) blocked.add(box.dataset.peer);
+          },
+        );
+      }
     } catch {
       // Проигрыватель не готов — следующая перерисовка попробует снова.
     }
   }
   // Вывод звука выбирается у проигрывателя, а не у потока, и умеют это не
   // все браузеры — playThrough честно ничего не делает там, где нельзя.
-  if (!isSelf) void playThrough(video, speaker);
+  // Переставляем только при смене: перерисовок теперь много (уровень звука
+  // приходит несколько раз в секунду), а setSinkId на каждой из них рвал бы
+  // звук.
+  if (!isSelf && video.dataset.sink !== String(speaker ?? '')) {
+    video.dataset.sink = String(speaker ?? '');
+    void playThrough(video, speaker);
+  }
 
   box.classList.toggle('tile--dark', !hasPicture(stream));
   box.dataset.initial = label.slice(0, 1);
@@ -138,7 +179,12 @@ export const renderCall = (container, state, actions) => {
     tiles.append(box);
   }
   // Осталось в было — те, кого уже нет.
-  for (const box of было.values()) box.remove();
+  for (const box of было.values()) {
+    blocked.delete(box.dataset.peer);
+    box.remove();
+  }
+
+  askForSound(container);
 
   // Беда с соединением — единственное, что может вывести карточку обратно
   // на экран, когда собеседники уже есть: если к кому-то не достучаться,
@@ -152,7 +198,7 @@ export const renderCall = (container, state, actions) => {
   const troubleBox = container.querySelector('#trouble');
   troubleBox.hidden = !trouble;
   if (trouble) {
-    const {title, advice} = explainTrouble(trouble);
+    const {title, advice} = explainTrouble(trouble, {relayReady: Boolean(state.relayReady)});
     container.querySelector('#trouble-title').textContent = title;
     container.querySelector('#trouble-advice').textContent = advice;
   }
@@ -164,7 +210,14 @@ export const renderCall = (container, state, actions) => {
   container.querySelector('#quiet').hidden = !state.quiet || Boolean(trouble);
 
   bindCopy(container, state.link);
-  bindToggle(container.querySelector('#mic'), state.mic, actions.toggleMicrophone);
+
+  const mic = container.querySelector('#mic');
+  bindToggle(mic, state.mic, actions.toggleMicrophone);
+  // Уровень звука на самой кнопке: видно, слышит ли вас ваш же компьютер.
+  // Корень квадратный растягивает тихую часть шкалы — обычная речь живёт в
+  // самом низу, и без него полоска почти не шевелилась бы.
+  const level = state.mic ? Math.min(1, Math.sqrt(state.level ?? 0) * 2.2) : 0;
+  mic.style.setProperty('--level', level.toFixed(2));
 
   // В голосовом режиме камеру всё равно держит выключенной лестница
   // качества. Кнопка, которая на вид работает, а на деле ничего не меняет,
