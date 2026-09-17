@@ -45,6 +45,10 @@ export const createRoom = async ({
   let cameraWanted = false;
   let microphoneWanted = false;
 
+  // Показ экрана. Отдельное намерение, а не разновидность камеры: человек
+  // может показывать экран с выключенной камерой и наоборот.
+  let screenWanted = false;
+
   // Каналы рукопожатия долго молчат. Это подсказка человеку, а не отказ:
   // звонок продолжает попытки, просто перестаёт делать вид, что всё идёт
   // как надо.
@@ -81,6 +85,8 @@ export const createRoom = async ({
     step,
     self: media.current(),
     mic: microphoneWanted,
+    screen: screenWanted,
+    canShareScreen: media.canShareScreen?.() ?? false,
     level,
     cam: cameraWanted,
     name: myName,
@@ -287,7 +293,10 @@ export const createRoom = async ({
   // всем); камера — как хочет человек, и только если ступень это позволяет.
   const applyDesiredMedia = () => {
     media.setMicrophone(microphoneWanted);
-    media.setCamera(cameraWanted && cameraAllowed());
+    // Показ экрана лестнице не подчиняется: если человек показывает экран,
+    // значит в нём весь смысл разговора, и гасить его из-за того, что
+    // говорит кто-то другой, — вредительство.
+    media.setCamera(screenWanted || (cameraWanted && cameraAllowed()));
   };
 
   // Захват по требованию — реакция на явное нажатие человека, а не на такт
@@ -302,6 +311,7 @@ export const createRoom = async ({
   // одной дорожки», второй параллельный getUserMedia — тот же риск заново.
   let microphoneCapturing = false;
   let cameraCapturing = false;
+  let screenSwitching = false;
 
   const startMicrophone = async () => {
     if (microphoneCapturing) return;
@@ -401,7 +411,7 @@ export const createRoom = async ({
 
   const timer = setInterval(() => void tick(), STATS_EVERY_MS);
 
-  return {
+  const room = {
     state,
     // Единственное место, где cameraWanted/microphoneWanted меняются. Сразу
     // же применяем к дорожкам и объявляем новое состояние — человек должен
@@ -417,6 +427,29 @@ export const createRoom = async ({
       announce();
       return on ? startMicrophone() : undefined;
     },
+    // Показ экрана заменяет картинку камеры и возвращает её обратно, когда
+    // показ окончен. Останавливает показ и сам браузер — своей полоской
+    // «прекратить»; тогда сюда приходит onStopped, и состояние не врёт.
+    setScreen: async on => {
+      if (screenSwitching) return;
+      screenSwitching = true;
+      try {
+        const swap = await media.useScreen(on, step, () => {
+          if (screenWanted) void room.setScreen(false);
+        });
+        screenWanted = on;
+        if (swap?.old) connection.replaceTrack(swap.old, swap.next);
+        else if (swap?.next) connection.addTrack(swap.next, media.current());
+      } catch {
+        // Человек передумал в окне выбора окна — это не поломка.
+        screenWanted = false;
+      } finally {
+        screenSwitching = false;
+        applyDesiredMedia();
+        announce();
+      }
+    },
+
     setCamera: on => {
       cameraWanted = on;
       if (!on) stopCamera();
@@ -468,4 +501,6 @@ export const createRoom = async ({
       await connection.leave();
     },
   };
+
+  return room;
 };

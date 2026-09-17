@@ -233,5 +233,17 @@ export const renderCall = (container, state, actions) => {
   camButton.disabled = state.step.videoFor === 'none';
   bindToggle(camButton, state.cam, actions.toggleCamera);
 
+  // Экран умеют не все браузеры — на телефонах getDisplayMedia нет вовсе.
+  // Кнопка, которая ничего не делает, хуже её отсутствия.
+  const screen = container.querySelector('#screen');
+  if (screen) {
+    screen.hidden = !state.canShareScreen;
+    bindToggle(screen, state.screen, actions.toggleScreen);
+    screen.setAttribute(
+      'aria-label',
+      state.screen ? 'Прекратить показ экрана' : 'Показать экран',
+    );
+  }
+
   container.querySelector('#hangup').onclick = actions.hangUp;
 };

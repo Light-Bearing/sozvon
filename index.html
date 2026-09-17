@@ -40,6 +40,16 @@
         <path d="M15 6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15" />
       </symbol>
       <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7" /></symbol>
+      <symbol id="i-screen" viewBox="0 0 24 24">
+        <rect x="2.5" y="4" width="19" height="13" rx="2.5" />
+        <path d="M9 20.5h6" />
+      </symbol>
+      <symbol id="i-screen-off" viewBox="0 0 24 24">
+        <path d="M8 4h11a2.5 2.5 0 0 1 2.5 2.5v8A2.5 2.5 0 0 1 19 17h-2" />
+        <path d="M13 17H5a2.5 2.5 0 0 1-2.5-2.5v-8A2.5 2.5 0 0 1 4 4.2" />
+        <path d="M9 20.5h6" />
+        <path d="m4 3 16 18" />
+      </symbol>
       <symbol id="i-gear" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="3.2" />
         <path d="M12 2.8v2.4m0 13.6v2.4M21.2 12h-2.4M5.2 12H2.8m15.5-6.3-1.7 1.7M7 17l-1.7 1.7m12.6 0L16.2 17M7 7 5.3 5.3" />
@@ -186,6 +196,11 @@
           <button id="cam" class="ctl" type="button" aria-pressed="true" aria-label="Камера">
             <svg class="i i-on"><use href="#i-cam" /></svg>
             <svg class="i i-off"><use href="#i-cam-off" /></svg>
+          </button>
+          <button id="screen" class="ctl" type="button" aria-pressed="false"
+                  aria-label="Показать экран" title="Показать экран" hidden>
+            <svg class="i i-on"><use href="#i-screen" /></svg>
+            <svg class="i i-off"><use href="#i-screen-off" /></svg>
           </button>
           <button id="settings-open" class="ctl" type="button" aria-label="Настройки">
             <svg class="i"><use href="#i-gear" /></svg>

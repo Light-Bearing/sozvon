@@ -99,6 +99,7 @@ const paint = state =>
     {
       toggleMicrophone: () => room.setMicrophone(!state.mic),
       toggleCamera: () => room.setCamera(!state.cam),
+      toggleScreen: () => void room.setScreen(!state.screen),
       hangUp: async () => {
         await room.leave();
         room = null;

@@ -823,3 +823,70 @@ describe('выбор устройства из настроек', () => {
     expect(connection.replaceTrack).toHaveBeenCalledWith(swap.old, swap.next);
   });
 });
+
+describe('показ экрана', () => {
+  const mediaWithScreen = (swap, canShare = true) => ({
+    ...fakeMedia(),
+    canShareScreen: () => canShare,
+    useScreen: vi.fn().mockResolvedValue(swap),
+    chosen: () => ({microphone: null, camera: null}),
+  });
+
+  it('пока не показываем — так и говорим', async () => {
+    const {room} = await openRoom({media: mediaWithScreen(null)});
+
+    expect(room.state().screen).toBe(false);
+    expect(room.state().canShareScreen).toBe(true);
+  });
+
+  it('где браузер не умеет — честно сообщаем, чтобы кнопки не было', async () => {
+    const {room} = await openRoom({media: mediaWithScreen(null, false)});
+
+    expect(room.state().canShareScreen).toBe(false);
+  });
+
+  it('картинка экрана заменяет картинку камеры на соединениях', async () => {
+    const swap = {old: {id: 'камера'}, next: {id: 'экран'}};
+    const {room, connection} = await openRoom({media: mediaWithScreen(swap)});
+
+    await room.setScreen(true);
+
+    expect(connection.replaceTrack).toHaveBeenCalledWith(swap.old, swap.next);
+    expect(room.state().screen).toBe(true);
+  });
+
+  it('с выключенной камерой дорожка экрана просто досылается', async () => {
+    const swap = {old: null, next: {id: 'экран'}};
+    const {room, connection} = await openRoom({media: mediaWithScreen(swap)});
+
+    await room.setScreen(true);
+
+    expect(connection.replaceTrack).not.toHaveBeenCalled();
+    // Второй довод — общий поток; в поддельном media его нет, и это не важно.
+    expect(connection.addTrack.mock.calls[0][0]).toBe(swap.next);
+  });
+
+  it('человек передумал в окне выбора — это не поломка, показ просто не начался', async () => {
+    const media = mediaWithScreen(null);
+    media.useScreen = vi.fn().mockRejectedValue(new Error('NotAllowedError'));
+    const {room} = await openRoom({media});
+
+    await room.setScreen(true);
+
+    expect(room.state().screen).toBe(false);
+  });
+
+  it('второе нажатие, пока браузер ещё спрашивает, ничего не ломает', async () => {
+    const media = mediaWithScreen({old: null, next: {id: 'экран'}});
+    let отпустить;
+    media.useScreen = vi.fn(() => new Promise(r => (отпустить = r)));
+    const {room} = await openRoom({media});
+
+    const первое = room.setScreen(true);
+    await room.setScreen(true);
+    отпустить({old: null, next: {id: 'экран'}});
+    await первое;
+
+    expect(media.useScreen).toHaveBeenCalledTimes(1);
+  });
+});

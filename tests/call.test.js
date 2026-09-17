@@ -387,3 +387,42 @@ describe('плитки не переставляются в DOM понапрас
     expect(el.querySelector('[data-peer="self"] video')).toBe(own);
   });
 });
+
+describe('кнопка показа экрана', () => {
+  it('там, где браузер не умеет, кнопки нет вовсе', () => {
+    const el = root();
+
+    renderCall(el, baseState({canShareScreen: false}), fakeActions());
+
+    expect(el.querySelector('#screen').hidden).toBe(true);
+  });
+
+  it('там, где умеет, кнопка на месте и показывает состояние', () => {
+    const el = root();
+
+    renderCall(el, baseState({canShareScreen: true, screen: false}), fakeActions());
+    expect(el.querySelector('#screen').hidden).toBe(false);
+    expect(el.querySelector('#screen').getAttribute('aria-pressed')).toBe('false');
+
+    renderCall(el, baseState({canShareScreen: true, screen: true}), fakeActions());
+    expect(el.querySelector('#screen').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('подпись меняется с «показать» на «прекратить»', () => {
+    const el = root();
+
+    renderCall(el, baseState({canShareScreen: true, screen: true}), fakeActions());
+
+    expect(el.querySelector('#screen').getAttribute('aria-label')).toContain('Прекратить');
+  });
+
+  it('нажатие просит комнату переключить показ', () => {
+    const el = root();
+    const actions = {...fakeActions(), toggleScreen: vi.fn()};
+    renderCall(el, baseState({canShareScreen: true}), actions);
+
+    el.querySelector('#screen').click();
+
+    expect(actions.toggleScreen).toHaveBeenCalled();
+  });
+});
