@@ -92,7 +92,7 @@ for (const s of sockets) {
   mine.push(ports);
 }
 const allPorts = mine.flat();
-const kind = mine.some(п => new Set(п).size > 1) ? 'симметричный' : 'обычный';
+const kind = mine.some(portNumber => new Set(portNumber).size > 1) ? 'симметричный' : 'обычный';
 const self = {ip: mine.ip, ports: mine, kind, низ: Math.min(...allPorts), верх: Math.max(...allPorts)};
 console.log('Я', role, JSON.stringify({kind, сокетов: СОКЕТОВ, окно: [self.низ, self.верх]}));
 
@@ -120,7 +120,7 @@ if (ВЕЕР > 0) {
 const peerPorts = [...new Set(peer.ports.flat())];
 for (let k = 0; k < СТУКОВ; k++) {
   for (const [i, s] of sockets.entries()) {
-    for (const п of peerPorts) s.send(Buffer.from(`стук ${role}${i}#${k}`), п, peer.ip);
+    for (const portNumber of peerPorts) s.send(Buffer.from(`стук ${role}${i}#${k}`), portNumber, peer.ip);
   }
   await wait(300);
 }
