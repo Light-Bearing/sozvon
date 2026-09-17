@@ -8,38 +8,38 @@
 const KINDS = ['audio', 'video'];
 
 export const createFlowTracker = () => {
-  let было = null;
+  let previous = null;
 
   return {
     // reports — то же, что собирает такт лестницы: по одному набору на
     // собеседника. Складываем по всем: человеку важно «идёт ли вообще», а
     // не с кем именно.
     update: (peerReports, now = Date.now()) => {
-      const сумма = {'принято-audio': 0, 'принято-video': 0, 'отдано-audio': 0, 'отдано-video': 0};
+      const totals = {'принято-audio': 0, 'принято-video': 0, 'отдано-audio': 0, 'отдано-video': 0};
       for (const {reports} of peerReports) {
         for (const report of reports) {
           if (report.type === 'inbound-rtp' && KINDS.includes(report.kind)) {
-            сумма['принято-' + report.kind] += report.bytesReceived || 0;
+            totals['принято-' + report.kind] += report.bytesReceived || 0;
           }
           if (report.type === 'outbound-rtp' && KINDS.includes(report.kind)) {
-            сумма['отдано-' + report.kind] += report.bytesSent || 0;
+            totals['отдано-' + report.kind] += report.bytesSent || 0;
           }
         }
       }
 
-      const прошлое = было;
-      было = {сумма, now};
-      if (!прошлое || now <= прошлое.now) return null;
+      const before = previous;
+      previous = {totals, now};
+      if (!before || now <= before.now) return null;
 
-      const секунд = (now - прошлое.now) / 1000;
-      const скорость = ключ =>
-        Math.max(0, Math.round(((сумма[ключ] - прошлое.сумма[ключ]) * 8) / 1000 / секунд));
+      const seconds = (now - before.now) / 1000;
+      const rate = key =>
+        Math.max(0, Math.round(((totals[key] - before.totals[key]) * 8) / 1000 / seconds));
 
       return {
-        inAudio: скорость('принято-audio'),
-        inVideo: скорость('принято-video'),
-        outAudio: скорость('отдано-audio'),
-        outVideo: скорость('отдано-video'),
+        inAudio: rate('принято-audio'),
+        inVideo: rate('принято-video'),
+        outAudio: rate('отдано-audio'),
+        outVideo: rate('отдано-video'),
       };
     },
   };
@@ -48,10 +48,10 @@ export const createFlowTracker = () => {
 // Человеку — словами и числами, без сокращений, понятных только своим.
 export const describeFlow = flow => {
   if (!flow) return '';
-  const строка = (метка, звук, видео) =>
-    `${метка}: звук ${звук} кбит/с, видео ${видео} кбит/с`;
+  const line = (label, audio, video) =>
+    `${label}: звук ${audio} кбит/с, видео ${video} кбит/с`;
   return [
-    строка('Вы отдаёте', flow.outAudio, flow.outVideo),
-    строка('Вам идёт', flow.inAudio, flow.inVideo),
+    line('Вы отдаёте', flow.outAudio, flow.outVideo),
+    line('Вам идёт', flow.inAudio, flow.inVideo),
   ].join('\n');
 };

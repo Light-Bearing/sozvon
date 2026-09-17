@@ -41,12 +41,12 @@ describe('секрет комнаты', () => {
     expect(linkToSecret(link)).toBe(secret);
   });
 
-  // Находка 7: сборка в один файл открывается с диска (file://), а в Chrome
+  // Находка 7: сборка в one файл открывается с диска (file://), а в Chrome
   // location.origin для таких адресов — буквально строка "null". Склейка
   // "null" + location.pathname давала битую ссылку вида
   // "null/Users/.../index.html#…" — ровно то, что README предлагает
   // попробовать.
-  it('на file:// (Chrome отдаёт location.origin как строку "null") ссылка не начинается с "null"', () => {
+  it('на file:// (Chrome отдаёт location.origin как строку "null") makeLink не начинается с "null"', () => {
     const previous = globalThis.location;
     globalThis.location = {
       origin: 'null',

@@ -211,9 +211,9 @@ describe('свой ретранслятор в настройках', () => {
     const {el, relay, actions, panel} = open();
     await panel.open();
 
-    const адрес = el.querySelector('#relay-address');
-    адрес.value = '195.58.52.143';
-    адрес.dispatchEvent(new Event('input'));
+    const field = el.querySelector('#relay-address');
+    field.value = '195.58.52.143';
+    field.dispatchEvent(new Event('input'));
 
     expect(actions.setRelay).toHaveBeenCalledWith('address', '195.58.52.143');
     expect(relay.address).toBe('195.58.52.143');

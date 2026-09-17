@@ -98,13 +98,13 @@ export const createRoom = async ({
   // Уровни приходят от всех по нескольку раз в секунду, но объявлять надо
   // только смену набора говорящих — иначе перерисовка станет постоянной.
   const refreshSpeaking = () => {
-    const сейчас = tracker
+    const heard = tracker
       .speaking(SPEAKING_WINDOW_MS)
       .map(id => (id === SELF ? 'self' : id));
-    const тот_же =
-      сейчас.length === speaking.length && сейчас.every(id => speaking.includes(id));
-    if (тот_же) return;
-    speaking = сейчас;
+    const same =
+      heard.length === speaking.length && heard.every(id => speaking.includes(id));
+    if (same) return;
+    speaking = heard;
     announce();
   };
 
@@ -219,15 +219,15 @@ export const createRoom = async ({
 
     const listen = () => {
       analyser.getFloatTimeDomainData(samples);
-      const измерено = levelFrom(samples);
-      tracker.report(SELF, измерено);
-      void levels.send(измерено);
+      const measured = levelFrom(samples);
+      tracker.report(SELF, measured);
+      void levels.send(measured);
       // Объявляем только заметные изменения: глазу хватает два десятка
       // ступеней, а перерисовка ради неразличимой цифры не нужна никому.
-      const ступень = Math.round(Math.min(1, Math.sqrt(измерено) * 2.2) * 20);
-      if (ступень === lastStep) return;
-      lastStep = ступень;
-      level = измерено;
+      const step20 = Math.round(Math.min(1, Math.sqrt(measured) * 2.2) * 20);
+      if (step20 === lastStep) return;
+      lastStep = step20;
+      level = measured;
       announce();
       refreshSpeaking();
     };

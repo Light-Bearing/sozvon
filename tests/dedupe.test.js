@@ -33,7 +33,7 @@ describe('отсев дублей', () => {
     expect(registry.ownerOf('петя')).toBeUndefined();
   });
 
-  it('после ухода владельца другой канал может забрать участника', () => {
+  it('после ухода владельца another канал может забрать участника', () => {
     registry.claim('петя', 'nostr');
     registry.release('петя', 'nostr');
     expect(registry.claim('петя', 'nostr')).toBe(true);

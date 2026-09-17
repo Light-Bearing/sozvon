@@ -10,7 +10,7 @@ import {STEPS} from '../src/ladder.js';
 // рукописная копия уже однажды отстала от оригинала, и тест проходил на
 // разметке, которой в приложении нет. Здесь же отсутствующий узел валит
 // тест сразу — как и должно быть.
-// В jsdom-окружении import.meta.url — адрес http, а не file, поэтому путь
+// В jsdom-окружении import.meta.url — field http, а не file, поэтому путь
 // считаем от корня проекта: vitest запускается именно из него.
 const HTML = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
 
@@ -37,7 +37,7 @@ const fakeActions = () => ({
 // Находка 2: renderCall получал state = {link, step, self, peers} — без
 // состояния микрофона и камеры интерфейс физически не мог показать правду.
 // bindToggle сам решал, что показать после клика (просто инвертировал
-// прежнее значение атрибута), поэтому второй звонок подряд с иным
+// прежнее значение атрибута), поэтому second звонок подряд с иным
 // стартовым состоянием — или любое расхождение атрибута с реальностью —
 // показывал ровно обратное тому, что происходит на самом деле.
 describe('кнопки микрофона и камеры показывают состояние комнаты, а не переключаются вслепую', () => {
@@ -58,7 +58,7 @@ describe('кнопки микрофона и камеры показывают �
 
     // Новый звонок начинается со свежим состоянием комнаты (room.js заводит
     // намерение заново). Раньше разметка это никак не отражала: атрибут
-    // оставался от предыдущего звонка, а первый клик его инвертировал бы
+    // оставался от предыдущего звонка, а first клик его инвертировал бы
     // ещё дальше от истины.
     renderCall(el, baseState({mic: true}), fakeActions());
     expect(el.querySelector('#mic').getAttribute('aria-pressed')).toBe('true');
@@ -73,7 +73,7 @@ describe('кнопки микрофона и камеры показывают �
 
     expect(actions.toggleMicrophone).toHaveBeenCalledTimes(1);
     // Атрибут не поменялся сам по себе кликом — он обновится только когда
-    // придёт новый state и случится следующий renderCall().
+    // придёт fresh state и случится следующий renderCall().
     expect(el.querySelector('#mic').getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -133,7 +133,7 @@ describe('беда со связью названа на экране', () => {
     expect(el.querySelector('#trouble').hidden).toBe(false);
     expect(el.querySelector('#waiting').hidden).toBe(true);
     expect(el.querySelector('#quiet').hidden).toBe(true);
-    // Сам текст проверяется там, где он живёт (tests/screens.test.js);
+    // Сам text проверяется там, где он живёт (tests/screens.test.js);
     // здесь — только что на экран попал именно он, а не что-то своё.
     const {title, advice} = explainTrouble('no-path');
     expect(el.querySelector('#trouble-title').textContent).toBe(title);
@@ -163,21 +163,21 @@ describe('беда со связью названа на экране', () => {
 });
 
 // Плитки пересобирались заново на каждое изменение состояния — а их в
-// разговоре много: чужая дорожка, чужое имя, своё нажатие, такт лестницы.
-// Каждая пересборка убивает <video> и создаёт новый, то есть обрывает и
-// картинку, и звук. На своей машине это мелькание, на телефоне — «ничего
+// разговоре много: чужая makeTrack, чужое имя, своё нажатие, такт лестницы.
+// Каждая пересборка убивает <video> и создаёт fresh, то есть обрывает и
+// картинку, и audio. На своей машине это мелькание, на телефоне — «ничего
 // не слышно» и «видео пропадает при переключении микрофона».
 describe('плитки переживают перерисовку', () => {
   const peer = (overrides = {}) => ({peerId: 'петя', stream: null, name: null, ...overrides});
 
-  it('тот же собеседник — тот же узел video, а не новый', () => {
+  it('тот же собеседник — тот же узел проигрывателя, а не новый', () => {
     const el = root();
     renderCall(el, baseState({peers: [peer()]}), fakeActions());
-    const было = el.querySelector('[data-peer="петя"] video');
+    const previous = el.querySelector('[data-peer="петя"] video');
 
     renderCall(el, baseState({peers: [peer({name: 'Пётр'})]}), fakeActions());
 
-    expect(el.querySelector('[data-peer="петя"] video')).toBe(было);
+    expect(el.querySelector('[data-peer="петя"] video')).toBe(previous);
   });
 
   it('имя меняется на месте', () => {
@@ -194,19 +194,19 @@ describe('плитки переживают перерисовку', () => {
     const stream = {getVideoTracks: () => [], getAudioTracks: () => []};
     renderCall(el, baseState({peers: [peer({stream})]}), fakeActions());
     const video = el.querySelector('[data-peer="петя"] video');
-    let присвоений = 0;
-    let текущий = video.srcObject;
+    let assignments = 0;
+    let current = video.srcObject;
     Object.defineProperty(video, 'srcObject', {
-      get: () => текущий,
+      get: () => current,
       set: v => {
-        присвоений++;
-        текущий = v;
+        assignments++;
+        current = v;
       },
     });
 
     renderCall(el, baseState({peers: [peer({stream})]}), fakeActions());
 
-    expect(присвоений).toBe(0);
+    expect(assignments).toBe(0);
   });
 
   it('ушедший собеседник уносит свою плитку', () => {
@@ -222,168 +222,168 @@ describe('плитки переживают перерисовку', () => {
   it('свою плитку тоже не пересоздаём', () => {
     const el = root();
     renderCall(el, baseState(), fakeActions());
-    const было = el.querySelector('[data-peer="self"] video');
+    const previous = el.querySelector('[data-peer="self"] video');
 
     renderCall(el, baseState({mic: false}), fakeActions());
 
-    expect(el.querySelector('[data-peer="self"] video')).toBe(было);
+    expect(el.querySelector('[data-peer="self"] video')).toBe(previous);
   });
 });
 
 // «Меня не слышно» неотличимо от «микрофон не работает», пока человек не
-// видит, доходит ли звук хотя бы до его собственного компьютера.
+// видит, доходит ли audio хотя бы до его собственного компьютера.
 describe('уровень звука на кнопке микрофона', () => {
-  const уровень = el => Number(el.querySelector('#mic').style.getPropertyValue('--level'));
+  const ringLevel = el => Number(el.querySelector('#mic').style.getPropertyValue('--level'));
 
   it('тишина — кольца нет', () => {
     const el = root();
     renderCall(el, baseState({mic: true, level: 0}), fakeActions());
 
-    expect(уровень(el)).toBe(0);
+    expect(ringLevel(el)).toBe(0);
   });
 
   it('голос поднимает кольцо', () => {
     const el = root();
     renderCall(el, baseState({mic: true, level: 0.05}), fakeActions());
 
-    expect(уровень(el)).toBeGreaterThan(0);
+    expect(ringLevel(el)).toBeGreaterThan(0);
   });
 
   it('громче — выше, но не выше единицы', () => {
     const el = root();
     renderCall(el, baseState({mic: true, level: 0.02}), fakeActions());
-    const тихо = уровень(el);
+    const quiet = ringLevel(el);
     renderCall(el, baseState({mic: true, level: 0.3}), fakeActions());
-    const громко = уровень(el);
+    const loud = ringLevel(el);
 
-    expect(громко).toBeGreaterThan(тихо);
-    expect(уровень(el)).toBeLessThanOrEqual(1);
+    expect(loud).toBeGreaterThan(quiet);
+    expect(ringLevel(el)).toBeLessThanOrEqual(1);
     renderCall(el, baseState({mic: true, level: 1}), fakeActions());
-    expect(уровень(el)).toBe(1);
+    expect(ringLevel(el)).toBe(1);
   });
 
   it('выключенный микрофон не светится, каким бы ни был последний замер', () => {
     const el = root();
     renderCall(el, baseState({mic: false, level: 0.5}), fakeActions());
 
-    expect(уровень(el)).toBe(0);
+    expect(ringLevel(el)).toBe(0);
   });
 });
 
-// Признак «глухая» у чужой дорожки означает «прямо сейчас нет данных» и
+// Признак «глухая» у чужой дорожки означает «прямо clock нет данных» и
 // включается сам собой при пересогласовании — а кадры при этом идут.
-// Я на это однажды купился и затемнил плитку поверх работающего видео.
+// Я на это однажды купился и затемнил плитку поверх работающего video.
 describe('когда плитка считается тёмной', () => {
-  const дорожка = (over = {}) => ({
+  const makeTrack = (over = {}) => ({
     kind: 'video',
     enabled: true,
     muted: false,
     readyState: 'live',
     ...over,
   });
-  const поток = (...tracks) => ({
+  const stream = (...tracks) => ({
     getVideoTracks: () => tracks.filter(t => t.kind === 'video'),
     getAudioTracks: () => tracks.filter(t => t.kind === 'audio'),
     getTracks: () => tracks,
   });
-  const тёмная = (el, кто) => el.querySelector(`[data-peer="${кто}"]`).classList.contains('tile--dark');
+  const isDark = (el, кто) => el.querySelector(`[data-peer="${кто}"]`).classList.contains('tile--dark');
 
-  it('живая дорожка — картинка есть', () => {
+  it('живая makeTrack — картинка есть', () => {
     const el = root();
-    renderCall(el, baseState({peers: [{peerId: 'петя', stream: поток(дорожка()), name: null}]}), fakeActions());
+    renderCall(el, baseState({peers: [{peerId: 'петя', stream: stream(makeTrack()), name: null}]}), fakeActions());
 
-    expect(тёмная(el, 'петя')).toBe(false);
+    expect(isDark(el, 'петя')).toBe(false);
   });
 
   it('глухая, но живая — всё равно картинка: кадры идут', () => {
     const el = root();
-    const peers = [{peerId: 'петя', stream: поток(дорожка({muted: true})), name: null}];
+    const peers = [{peerId: 'петя', stream: stream(makeTrack({muted: true})), name: null}];
 
     renderCall(el, baseState({peers}), fakeActions());
 
-    expect(тёмная(el, 'петя')).toBe(false);
+    expect(isDark(el, 'петя')).toBe(false);
   });
 
-  it('кончившаяся дорожка — картинки нет', () => {
+  it('кончившаяся makeTrack — картинки нет', () => {
     const el = root();
-    const peers = [{peerId: 'петя', stream: поток(дорожка({readyState: 'ended'})), name: null}];
+    const peers = [{peerId: 'петя', stream: stream(makeTrack({readyState: 'ended'})), name: null}];
 
     renderCall(el, baseState({peers}), fakeActions());
 
-    expect(тёмная(el, 'петя')).toBe(true);
+    expect(isDark(el, 'петя')).toBe(true);
   });
 
   it('погашенная хозяином — картинки нет', () => {
     const el = root();
-    const peers = [{peerId: 'петя', stream: поток(дорожка({enabled: false})), name: null}];
+    const peers = [{peerId: 'петя', stream: stream(makeTrack({enabled: false})), name: null}];
 
     renderCall(el, baseState({peers}), fakeActions());
 
-    expect(тёмная(el, 'петя')).toBe(true);
+    expect(isDark(el, 'петя')).toBe(true);
   });
 
   it('только звук — картинки нет', () => {
     const el = root();
-    const звук = {kind: 'audio', enabled: true, muted: false, readyState: 'live'};
-    const peers = [{peerId: 'петя', stream: поток(звук), name: null}];
+    const audio = {kind: 'audio', enabled: true, muted: false, readyState: 'live'};
+    const peers = [{peerId: 'петя', stream: stream(audio), name: null}];
 
     renderCall(el, baseState({peers}), fakeActions());
 
-    expect(тёмная(el, 'петя')).toBe(true);
+    expect(isDark(el, 'петя')).toBe(true);
   });
 });
 
 // append() для узла, который уже лежит в этом же родителе, означает
 // «вынуть и вставить заново». Для <video> это перезапуск проигрывания —
 // а перерисовок теперь несколько в секунду (уровень звука). Отсюда и
-// моргание плиток, и молчащий звук на телефоне: проигрыватель не успевает
+// моргание плиток, и молчащий audio на телефоне: проигрыватель не успевает
 // начать, как его уже переставили.
 describe('плитки не переставляются в DOM понапрасну', () => {
-  const считатьВставки = tiles => {
-    let вставок = 0;
-    for (const имя of ['append', 'appendChild', 'insertBefore']) {
-      const родной = tiles[имя].bind(tiles);
-      tiles[имя] = (...a) => {
-        вставок++;
-        return родной(...a);
+  const countInserts = tiles => {
+    let inserts = 0;
+    for (const name of ['append', 'appendChild', 'insertBefore']) {
+      const original = tiles[name].bind(tiles);
+      tiles[name] = (...a) => {
+        inserts++;
+        return original(...a);
       };
     }
-    return () => вставок;
+    return () => inserts;
   };
 
   it('повторная отрисовка без изменений не трогает дерево', () => {
     const el = root();
     const peers = [{peerId: 'петя', stream: null, name: 'Пётр'}];
     renderCall(el, baseState({peers}), fakeActions());
-    const вставок = считатьВставки(el.querySelector('#tiles'));
+    const inserts = countInserts(el.querySelector('#tiles'));
 
     renderCall(el, baseState({peers}), fakeActions());
     renderCall(el, baseState({peers}), fakeActions());
 
-    expect(вставок()).toBe(0);
+    expect(inserts()).toBe(0);
   });
 
   it('смена уровня звука дерево не трогает', () => {
     const el = root();
     renderCall(el, baseState({mic: true, level: 0.01}), fakeActions());
-    const вставок = считатьВставки(el.querySelector('#tiles'));
+    const inserts = countInserts(el.querySelector('#tiles'));
 
     for (const level of [0.2, 0.05, 0.4]) {
       renderCall(el, baseState({mic: true, level}), fakeActions());
     }
 
-    expect(вставок()).toBe(0);
+    expect(inserts()).toBe(0);
   });
 
   it('новый собеседник вставляется, но чужие плитки не трогает', () => {
     const el = root();
     renderCall(el, baseState(), fakeActions());
-    const свой = el.querySelector('[data-peer="self"] video');
-    const вставок = считатьВставки(el.querySelector('#tiles'));
+    const own = el.querySelector('[data-peer="self"] video');
+    const inserts = countInserts(el.querySelector('#tiles'));
 
     renderCall(el, baseState({peers: [{peerId: 'петя', stream: null, name: null}]}), fakeActions());
 
-    expect(вставок()).toBe(1);
-    expect(el.querySelector('[data-peer="self"] video')).toBe(свой);
+    expect(inserts()).toBe(1);
+    expect(el.querySelector('[data-peer="self"] video')).toBe(own);
   });
 });

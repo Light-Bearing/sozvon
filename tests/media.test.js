@@ -76,7 +76,7 @@ describe('камера', () => {
 
     // applyStep больше не трогает enabled ни в одну сторону — единый
     // хозяин дорожки это setCamera() (через applyDesiredMedia() в
-    // src/room.js), поэтому здесь дорожка остаётся как была.
+    // src/room.js), поэтому здесь makeTrack остаётся как была.
     expect(stream.video.applyConstraints).not.toHaveBeenCalled();
     expect(stream.video.enabled).toBe(true);
     expect(stream.audio.enabled).toBe(true);
@@ -94,7 +94,7 @@ describe('камера', () => {
 
     stream.video.enabled = false; // человек выключил камеру
 
-    // Смена ступени на обычный видео-режим (не voice) — раньше именно
+    // Смена ступени на обычный video-режим (не voice) — раньше именно
     // здесь enabled синхронно становился true.
     await media.applyStep(stepForPeers(4));
 
@@ -168,9 +168,9 @@ describe('захват и освобождение по требованию', (
   const fakeAudioTrack = () => ({kind: 'audio', enabled: true, stop: vi.fn()});
   const fakeVideoTrack = () => ({kind: 'video', enabled: true, stop: vi.fn()});
 
-  // В отличие от fakeStream() выше (список дорожек фиксирован), этой группе
+  // В отличие от fakeStream() выше (servers дорожек фиксирован), этой группе
   // тестов важно, что addTrack()/removeTrack() по-настоящему меняют состав:
-  // второй захват должен увидеть дорожку, добавленную первым, и не просить
+  // second захват должен увидеть дорожку, добавленную первым, и не просить
   // getUserMedia заново.
   const fakeCapturedStream = initial => {
     const tracks = [...initial];

@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest';
 import {TICKET_SECONDS, mintTicket, relayUrls, turnConfigFor} from '../src/turn.js';
 
 describe('адрес ретранслятора', () => {
-  it('голый адрес дополняется портом и получает пару — обычную и по TCP', () => {
+  it('голый field дополняется портом и получает пару — обычную и по TCP', () => {
     expect(relayUrls('195.58.52.143')).toEqual([
       'turn:195.58.52.143:3478',
       'turn:195.58.52.143:3478?transport=tcp',
@@ -37,17 +37,17 @@ describe('короткий пропуск', () => {
   });
 
   it('пароль — подпись имени, и от ключа зависит', async () => {
-    const один = await mintTicket('ключ-один', {now: 0});
-    const другой = await mintTicket('ключ-другой', {now: 0});
+    const one = await mintTicket('ключ-один', {now: 0});
+    const another = await mintTicket('ключ-другой', {now: 0});
 
-    expect(один.credential).not.toBe(другой.credential);
+    expect(one.credential).not.toBe(another.credential);
     // Подпись SHA-1 — 20 байт, в base64 это 28 знаков.
-    expect(один.credential).toHaveLength(28);
+    expect(one.credential).toHaveLength(28);
   });
 
   it('совпадает с тем, что считает сам coturn', async () => {
     // Проверочное значение посчитано отдельно тем же правилом, каким его
-    // считает сервер: base64(HMAC-SHA1(ключ, имя)).
+    // считает сервер: base64(HMAC-SHA1(ключ, name)).
     const {username, credential} = await mintTicket('секрет', {now: 0, name: 'кто'});
 
     expect(username).toBe(`${TICKET_SECONDS}:кто`);
@@ -64,12 +64,12 @@ describe('список для льда', () => {
   });
 
   it('оба адреса получают один и тот же пропуск', async () => {
-    const список = await turnConfigFor({address: 'host', secret: 'ключ', now: 0});
+    const servers = await turnConfigFor({address: 'host', secret: 'ключ', now: 0});
 
-    expect(список).toHaveLength(2);
-    expect(список[0].username).toBe(список[1].username);
-    expect(список[0].credential).toBe(список[1].credential);
-    expect(список.map(s => s.urls)).toEqual([
+    expect(servers).toHaveLength(2);
+    expect(servers[0].username).toBe(servers[1].username);
+    expect(servers[0].credential).toBe(servers[1].credential);
+    expect(servers.map(s => s.urls)).toEqual([
       'turn:host:3478',
       'turn:host:3478?transport=tcp',
     ]);
@@ -77,8 +77,8 @@ describe('список для льда', () => {
 });
 
 describe('настройка ретранслятора ссылкой', () => {
-  const ссылка = (адрес, ключ) => {
-    const json = JSON.stringify({a: адрес, k: ключ});
+  const makeLink = (field, ключ) => {
+    const json = JSON.stringify({a: field, k: ключ});
     const b64 = Buffer.from(json).toString('base64url');
     return `https://sozvon.test/#turn=${b64}`;
   };
@@ -86,25 +86,25 @@ describe('настройка ретранслятора ссылкой', () => {
   it('адрес и ключ достаются из хвоста', async () => {
     const {relayFromLink} = await import('../src/turn.js');
 
-    expect(relayFromLink(ссылка('195.58.52.143', 'ключ-сервера'))).toEqual({
+    expect(relayFromLink(makeLink('195.58.52.143', 'ключ-сервера'))).toEqual({
       address: '195.58.52.143',
       secret: 'ключ-сервера',
     });
   });
 
-  it('обычная ссылка на разговор настройкой не считается', async () => {
+  it('обычная makeLink на разговор настройкой не считается', async () => {
     const {relayFromLink} = await import('../src/turn.js');
 
     expect(relayFromLink('https://sozvon.test/#1shRJ554WgkcmxgI-ERoLA')).toBe(null);
     expect(relayFromLink('https://sozvon.test/')).toBe(null);
   });
 
-  it('испорченная ссылка не роняет приложение', async () => {
+  it('испорченная makeLink не роняет приложение', async () => {
     const {relayFromLink} = await import('../src/turn.js');
 
     expect(relayFromLink('https://sozvon.test/#turn=это-не-base64!!')).toBe(null);
-    expect(relayFromLink('не ссылка вовсе')).toBe(null);
-    expect(relayFromLink(ссылка('', 'ключ'))).toBe(null);
-    expect(relayFromLink(ссылка('адрес', ''))).toBe(null);
+    expect(relayFromLink('не makeLink вовсе')).toBe(null);
+    expect(relayFromLink(makeLink('', 'ключ'))).toBe(null);
+    expect(relayFromLink(makeLink('адрес', ''))).toBe(null);
   });
 });

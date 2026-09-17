@@ -61,8 +61,8 @@ const askForSound = container => {
     blocked.clear();
     for (const video of container.querySelectorAll('#tiles video')) {
       try {
-        const идёт = video.play?.();
-        if (идёт && typeof идёт.catch === 'function') идёт.catch(() => {});
+        const playing = video.play?.();
+        if (playing && typeof playing.catch === 'function') playing.catch(() => {});
       } catch {
         // Не вышло — кнопка вернётся на следующей перерисовке.
       }
@@ -84,9 +84,9 @@ const updateTile = (box, stream, label, isSelf, speaker, speaking) => {
     // без настоящего проигрывателя — вообще ничего), поэтому и вызов, и
     // отказ обёрнуты.
     try {
-      const идёт = video.play?.();
-      if (идёт && typeof идёт.catch === 'function') {
-        идёт.then(
+      const playing = video.play?.();
+      if (playing && typeof playing.catch === 'function') {
+        playing.then(
           () => blocked.delete(box.dataset.peer),
           () => {
             if (!isSelf) blocked.add(box.dataset.peer);
@@ -171,11 +171,11 @@ export const renderCall = (container, state, actions) => {
   ];
 
   const tiles = container.querySelector('#tiles');
-  const было = new Map([...tiles.children].map(box => [box.dataset.peer, box]));
+  const present = new Map([...tiles.children].map(box => [box.dataset.peer, box]));
 
   for (const {id, stream, label, isSelf} of wanted) {
-    const box = было.get(id) ?? makeTile(id, isSelf);
-    было.delete(id);
+    const box = present.get(id) ?? makeTile(id, isSelf);
+    present.delete(id);
     updateTile(box, stream, label, isSelf, state.speaker, state.speaking?.includes(id));
     // Вставляем ТОЛЬКО новые. append() для узла, который уже лежит здесь,
     // означает «вынуть и вставить заново» — а для <video> это перезапуск
@@ -184,8 +184,8 @@ export const renderCall = (container, state, actions) => {
     // начать, как его уже переставили.
     if (box.parentNode !== tiles) tiles.append(box);
   }
-  // Осталось в было — те, кого уже нет.
-  for (const box of было.values()) {
+  // Осталось в present — те, кого уже нет.
+  for (const box of present.values()) {
     blocked.delete(box.dataset.peer);
     box.remove();
   }
@@ -223,8 +223,8 @@ export const renderCall = (container, state, actions) => {
   // Корень квадратный растягивает тихую часть шкалы — обычная речь живёт в
   // самом низу, и без него полоска почти не шевелилась бы.
   const level = state.mic ? Math.min(1, Math.sqrt(state.level ?? 0) * 2.2) : 0;
-  const прежний = mic.style.getPropertyValue('--level');
-  if (прежний !== level.toFixed(2)) mic.style.setProperty('--level', level.toFixed(2));
+  const shown = mic.style.getPropertyValue('--level');
+  if (shown !== level.toFixed(2)) mic.style.setProperty('--level', level.toFixed(2));
 
   // В голосовом режиме камеру всё равно держит выключенной лестница
   // качества. Кнопка, которая на вид работает, а на деле ничего не меняет,

@@ -33,9 +33,9 @@ export const createSpeakingTracker = ({
     // камере переключаться так часто нельзя.
     speaking: (within = hold) => {
       const t = now();
-      const итог = [];
-      for (const [peerId, {at}] of heard) if (t - at <= within) итог.push(peerId);
-      return итог;
+      const now_speaking = [];
+      for (const [peerId, {at}] of heard) if (t - at <= within) now_speaking.push(peerId);
+      return now_speaking;
     },
 
     // Держим говорящего сквозь паузы между словами, иначе картинка мигает.

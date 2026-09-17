@@ -29,7 +29,7 @@ const SMALL = stepForPeers(4); // соседняя ступень — для п�
 
 // Поддельный отправитель вместо настоящего RTCRtpSender: даёт ровно то, чем
 // пользуется setMaxBitrate из src/media.js (getParameters/setParameters),
-// плюс track.kind, по которому room.js отличает видео от звука.
+// плюс track.kind, по которому room.js отличает video от звука.
 const fakeSender = () => ({
   track: {kind: 'video'},
   getParameters: () => ({encodings: [{}]}),
@@ -130,7 +130,7 @@ describe('потолок битрейта на пересчёте ступени
     connection.setPeer('сосед', fakePeer([sender]));
 
     // Настоящая лестница: при 1↔2 собеседниках stepForPeers всегда даёт
-    // 'full' — имя ступени не меняется никогда. Это и есть находка 1.
+    // 'full' — name ступени не меняется никогда. Это и есть находка 1.
     const {room} = await openRoom({connection, ladder: createLadder()});
     connection.handlers.onPeerJoin('сосед');
 
@@ -225,7 +225,7 @@ describe('перенастройка камеры', () => {
 
     await vi.advanceTimersByTimeAsync(STATS_EVERY_MS); // тик 2: small → small — без смены
     expect(media.applyStep).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenCalledTimes(1); // не выросло — перерисовки вхолостую не было
+    expect(onChange).toHaveBeenCalledTimes(1); // не выросло — перерисовки вхолостую не previous
 
     await vi.advanceTimersByTimeAsync(STATS_EVERY_MS); // тик 3: small → full — смена
     expect(media.applyStep).toHaveBeenCalledTimes(2);
@@ -254,7 +254,7 @@ describe('завершение звонка', () => {
 });
 
 // Находка 1: тремя местами писали в media.setCamera() — человек кнопкой,
-// лестница качества и определение говорящего. Единого хозяина не было, и
+// лестница качества и определение говорящего. Единого хозяина не previous, и
 // на ступенях 'full'/'small' (videoFor: 'all' — обычный звонок вдвоём-
 // вчетвером) такт безусловно переустанавливал камеру, отменяя нажатие
 // человека уже через одно и то же 2-секундное деление STATS_EVERY_MS.
@@ -487,13 +487,13 @@ describe('камера не включается против воли чело�
     };
     const media = createMedia({getUserMedia: vi.fn().mockResolvedValue(stream)});
 
-    // full -> small: обычный видео-режим (videoFor: 'all' у обеих), не
+    // full -> small: обычный video-режим (videoFor: 'all' у обеих), не
     // голосовой, — ровно тот переход, где раньше проявлялась гонка.
     const ladder = fakeLadder([SMALL]);
     const {room} = await openRoom({media, ladder});
 
     // Вход молчаливый — камеру сперва нужно по-настоящему запросить (это и
-    // заводит внутренний stream настоящего media.js на fake-поток выше),
+    // заводит внутренний stream настоящего media.js на fake-stream выше),
     // только потом есть что выключать.
     await room.setCamera(true);
     room.setCamera(false);
@@ -510,7 +510,7 @@ describe('камера не включается против воли чело�
 
 // Раньше медиа захватывалось до подключения, а подключение могло
 // отклониться — например, если библиотека не сумела подняться вовсе. Тогда
-// при отказе createRoom падал целиком, а поток никто не гасил: media.stop()
+// при отказе createRoom падал целиком, а stream никто не гасил: media.stop()
 // жил только в leave(), до которого дело не доходило — человек видел «Связь
 // не установилась», а камера продолжала гореть до закрытия вкладки.
 //
@@ -694,7 +694,7 @@ describe('передача параметра семейств дальше в c
 // открытого канала данных, которого не будет. Без этой ветки экран показывал
 // «Жду, когда зайдут» бесконечно, хотя собеседник был найден.
 describe('беда с прямым путём доходит до состояния', () => {
-  it('без жалоб список пуст', async () => {
+  it('без жалоб servers пуст', async () => {
     const {room} = await openRoom();
 
     expect(room.state().troubles).toEqual([]);
@@ -797,7 +797,7 @@ describe('имена участников', () => {
 describe('выбор устройства из настроек', () => {
   const mediaWithSwap = swap => ({...fakeMedia(), useMicrophone: vi.fn().mockResolvedValue(swap), useCamera: vi.fn().mockResolvedValue(swap), chosen: () => ({microphone: null, camera: null})});
 
-  it('новая дорожка микрофона переставляется на соединениях', async () => {
+  it('новая makeTrack микрофона переставляется на соединениях', async () => {
     const swap = {old: {id: 'старая'}, next: {id: 'новая'}};
     const {room, connection} = await openRoom({media: mediaWithSwap(swap)});
 

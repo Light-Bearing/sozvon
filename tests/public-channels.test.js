@@ -14,7 +14,7 @@ const fakeTrack = kind => {
     enabled: true,
     muted: false,
     addEventListener: (name, fn) => (listeners[name] = fn),
-    // Настоящая дорожка при завершении меняет readyState — подделка обязана
+    // Настоящая makeTrack при завершении меняет readyState — подделка обязана
     // делать то же, иначе тест проверяет не то, что происходит на деле.
     end: () => {
       track.readyState = 'ended';
@@ -111,7 +111,7 @@ const createFakeRoom = () => {
     addTrackCalls,
     removeTrackCalls,
     // Поддельные сокеты релеев этого семейства — {url: {readyState}}.
-    // Пустой объект по умолчанию: ни один адрес не открыт, семейство мертво,
+    // Пустой объект по умолчанию: ни one field не открыт, семейство мертво,
     // пока тест явно не откроет сокет через sockets.
     sockets: {},
     action: namespace => room.makeAction(namespace),
@@ -254,25 +254,25 @@ describe('публичные каналы: адресная доставка', (
   describe('onPeerStream', () => {
     it('второй поток от уже принятого участника наверх не проходит', () => {
       fakes.nostr.join('петя');
-      const первый = fakeTrack('audio');
-      const второй = fakeTrack('audio');
+      const first = fakeTrack('audio');
+      const second = fakeTrack('audio');
 
-      fakes.nostr.stream(fakeStream(первый), 'петя');
-      fakes.nostr.stream(fakeStream(второй), 'петя');
+      fakes.nostr.stream(fakeStream(first), 'петя');
+      fakes.nostr.stream(fakeStream(second), 'петя');
 
       expect(handlers.onPeerStream).toHaveBeenCalledTimes(1);
-      expect(handlers.onPeerStream.mock.calls[0][0].getTracks()).toEqual([первый]);
+      expect(handlers.onPeerStream.mock.calls[0][0].getTracks()).toEqual([first]);
     });
 
     it('принимается от любого семейства, не только от владельца', () => {
       fakes.nostr.join('петя');
       fakes.mqtt.join('петя');
-      const дорожка = fakeTrack('video');
+      const makeTrack = fakeTrack('video');
 
-      fakes.mqtt.stream(fakeStream(дорожка), 'петя');
+      fakes.mqtt.stream(fakeStream(makeTrack), 'петя');
 
       expect(handlers.onPeerStream).toHaveBeenCalledTimes(1);
-      expect(handlers.onPeerStream.mock.calls[0][0].getTracks()).toEqual([дорожка]);
+      expect(handlers.onPeerStream.mock.calls[0][0].getTracks()).toEqual([makeTrack]);
     });
   });
 
@@ -315,14 +315,14 @@ describe('публичные каналы: адресная доставка', (
 
   describe('переподключение участника', () => {
     it('участник полностью ушёл, вернулся в той же сессии — его новый поток доходит наверх', () => {
-      const первая = fakeTrack('audio');
-      const вторая = fakeTrack('video');
-      const последний = () => handlers.onPeerStream.mock.calls.at(-1)[0];
+      const first = fakeTrack('audio');
+      const second = fakeTrack('video');
+      const latest = () => handlers.onPeerStream.mock.calls.at(-1)[0];
 
       fakes.nostr.join('петя');
-      fakes.nostr.stream(fakeStream(первая), 'петя');
+      fakes.nostr.stream(fakeStream(first), 'петя');
       expect(handlers.onPeerStream).toHaveBeenCalledTimes(1);
-      expect(последний().getTracks()).toEqual([первая]);
+      expect(latest().getTracks()).toEqual([first]);
 
       handlers.onPeerStream.mockClear();
       fakes.nostr.leave('петя');
@@ -330,16 +330,16 @@ describe('публичные каналы: адресная доставка', (
       expect(handlers.onPeerLeave).toHaveBeenCalledWith('петя');
 
       fakes.nostr.join('петя');
-      fakes.nostr.stream(fakeStream(вторая), 'петя');
+      fakes.nostr.stream(fakeStream(second), 'петя');
 
       expect(handlers.onPeerStream).toHaveBeenCalledTimes(1);
-      // Старой дорожки быть не должно: ушедший унёс свой поток с собой.
-      expect(последний().getTracks()).toEqual([вторая]);
+      // Старой дорожки быть не должно: ушедший унёс own поток с собой.
+      expect(latest().getTracks()).toEqual([second]);
     });
   });
 
-  // Находка 5: раньше status() просто отдавал настроенный список адресов —
-  // он ничего не говорил о том, жив ли канал прямо сейчас, и его никто не
+  // Находка 5: раньше status() просто отдавал настроенный servers адресов —
+  // он ничего не говорил о том, жив ли канал прямо clock, и его никто не
   // читал. Теперь он честно смотрит на readyState сокетов из getRelaySockets().
   describe('status(): какие каналы живы прямо сейчас', () => {
     it('семейство без единого открытого сокета живым не считается', () => {
@@ -391,7 +391,7 @@ describe('parseFamilyNames', () => {
     expect(parseFamilyNames(undefined)).toEqual([]);
   });
 
-  it('параметр есть, но пустой или из одних запятых — пустой список, а не список пустых строк', () => {
+  it('параметр есть, но пустой или из одних запятых — пустой servers, а не servers пустых строк', () => {
     expect(parseFamilyNames('')).toEqual([]);
     expect(parseFamilyNames(',,')).toEqual([]);
   });
@@ -504,29 +504,29 @@ describe('публичные каналы: жалобы на неудачу', ()
 });
 
 describe('ретранслятор доходит до библиотеки', () => {
-  const собрать = turnConfig => {
-    const настройки = [];
+  const collect = turnConfig => {
+    const configs = [];
     const families = FAMILY_NAMES.map(family => ({
       family,
       join: config => {
-        настройки.push(config);
+        configs.push(config);
         return createFakeRoom().room;
       },
       getRelaySockets: () => ({}),
     }));
     joinPublicChannels({roomId: 'r', password: 'p', handlers: {}, families, turnConfig});
-    return настройки;
+    return configs;
   };
 
   it('список ретрансляторов попадает в настройку каждого семейства', () => {
     const turnConfig = [{urls: 'turn:host:3478', username: 'u', credential: 'c'}];
 
-    expect(собрать(turnConfig).map(c => c.turnConfig)).toEqual([turnConfig, turnConfig]);
+    expect(collect(turnConfig).map(c => c.turnConfig)).toEqual([turnConfig, turnConfig]);
   });
 
   it('без ретранслятора поля нет вовсе — библиотека берёт свои умолчания', () => {
-    for (const config of собрать(undefined)) expect('turnConfig' in config).toBe(false);
-    for (const config of собрать([])) expect('turnConfig' in config).toBe(false);
+    for (const config of collect(undefined)) expect('turnConfig' in config).toBe(false);
+    for (const config of collect([])) expect('turnConfig' in config).toBe(false);
   });
 });
 
@@ -535,7 +535,7 @@ describe('ретранслятор доходит до библиотеки', ()
 // onPeerStream. Мы слушали только второе — и медиа собеседника доходило до
 // соединения, но не доходило до экрана.
 //
-// Поток собеседника мы теперь держим свой и накопительный. Иначе выходит
+// Поток собеседника мы теперь держим own и накопительный. Иначе выходит
 // так: при пересогласовании (а оно случается на каждое включение микрофона
 // или камеры) библиотека может отдать дорожку с ДРУГИМ объектом потока —
 // и плитка мгновенно теряет всё, чего в новом потоке нет. На своей машине
@@ -555,43 +555,43 @@ describe('поток собеседника собирается у нас, а �
     joinPublicChannels({roomId: 'r', password: 'p', handlers, families});
   });
 
-  const последний = () => handlers.onPeerStream.mock.calls.at(-1)[0];
+  const latest = () => handlers.onPeerStream.mock.calls.at(-1)[0];
 
   it('звук и картинка сходятся в один поток', () => {
     fakes.nostr.join('петя');
-    const звук = fakeTrack('audio');
-    const видео = fakeTrack('video');
+    const audio = fakeTrack('audio');
+    const video = fakeTrack('video');
 
-    fakes.nostr.track(звук, {id: 'чужой-1'}, 'петя');
-    fakes.nostr.track(видео, {id: 'чужой-1'}, 'петя');
+    fakes.nostr.track(audio, {id: 'чужой-1'}, 'петя');
+    fakes.nostr.track(video, {id: 'чужой-1'}, 'петя');
 
-    expect(последний().getTracks()).toEqual([звук, видео]);
+    expect(latest().getTracks()).toEqual([audio, video]);
   });
 
   it('дорожка с ДРУГИМ объектом потока не стирает уже собранное', () => {
     fakes.nostr.join('петя');
-    const видео = fakeTrack('video');
-    const звук = fakeTrack('audio');
+    const video = fakeTrack('video');
+    const audio = fakeTrack('audio');
 
-    fakes.nostr.track(видео, {id: 'чужой-1'}, 'петя');
-    // Собеседник включил микрофон, пересогласование дало новый объект.
-    fakes.nostr.track(звук, {id: 'чужой-ДРУГОЙ'}, 'петя');
+    fakes.nostr.track(video, {id: 'чужой-1'}, 'петя');
+    // Собеседник включил микрофон, пересогласование дало fresh объект.
+    fakes.nostr.track(audio, {id: 'чужой-ДРУГОЙ'}, 'петя');
 
-    expect(последний().getVideoTracks()).toEqual([видео]);
-    expect(последний().getAudioTracks()).toEqual([звук]);
+    expect(latest().getVideoTracks()).toEqual([video]);
+    expect(latest().getAudioTracks()).toEqual([audio]);
   });
 
-  it('закончившаяся дорожка уходит из потока', () => {
+  it('закончившаяся makeTrack уходит из потока', () => {
     fakes.nostr.join('петя');
-    const звук = fakeTrack('audio');
-    const видео = fakeTrack('video');
-    fakes.nostr.track(звук, {id: 'ч'}, 'петя');
-    fakes.nostr.track(видео, {id: 'ч'}, 'петя');
+    const audio = fakeTrack('audio');
+    const video = fakeTrack('video');
+    fakes.nostr.track(audio, {id: 'ч'}, 'петя');
+    fakes.nostr.track(video, {id: 'ч'}, 'петя');
     handlers.onPeerStream.mockClear();
 
-    звук.end();
+    audio.end();
 
-    expect(последний().getTracks()).toEqual([видео]);
+    expect(latest().getTracks()).toEqual([video]);
   });
 
   it('ушедший собеседник уносит свой поток', () => {
@@ -603,12 +603,12 @@ describe('поток собеседника собирается у нас, а �
     fakes.nostr.join('петя');
     fakes.nostr.track(fakeTrack('video'), {id: 'ч2'}, 'петя');
 
-    expect(последний().getTracks().map(t => t.kind)).toEqual(['video']);
+    expect(latest().getTracks().map(t => t.kind)).toEqual(['video']);
   });
 });
 
 // Пересогласование случается на каждое включение микрофона или камеры, и
-// каждый раз приезжает новая дорожка. Если складывать их все, в потоке
+// каждый раз приезжает новая makeTrack. Если складывать их all, в потоке
 // копятся мёртвые, проигрыватель берёт первую из них — и вместо картинки
 // человек видит пустоту. Ровно это и наблюдалось живьём.
 describe('мёртвые дорожки не копятся', () => {
@@ -627,16 +627,16 @@ describe('мёртвые дорожки не копятся', () => {
     fakes.nostr.join('петя');
   });
 
-  const последний = () => handlers.onPeerStream.mock.calls.at(-1)[0];
+  const latest = () => handlers.onPeerStream.mock.calls.at(-1)[0];
 
-  it('новая дорожка того же вида заменяет прежнюю', () => {
-    const прежний = fakeTrack('audio');
-    const новый = fakeTrack('audio');
+  it('новая makeTrack того же вида заменяет прежнюю', () => {
+    const previous = fakeTrack('audio');
+    const fresh = fakeTrack('audio');
 
-    fakes.nostr.track(прежний, {}, 'петя');
-    fakes.nostr.track(новый, {}, 'петя');
+    fakes.nostr.track(previous, {}, 'петя');
+    fakes.nostr.track(fresh, {}, 'петя');
 
-    expect(последний().getAudioTracks()).toEqual([новый]);
+    expect(latest().getAudioTracks()).toEqual([fresh]);
   });
 
   it('три круга включений оставляют ровно одну дорожку каждого вида', () => {
@@ -645,17 +645,17 @@ describe('мёртвые дорожки не копятся', () => {
       fakes.nostr.track(fakeTrack('video'), {}, 'петя');
     }
 
-    expect(последний().getTracks().map(t => t.kind)).toEqual(['audio', 'video']);
+    expect(latest().getTracks().map(t => t.kind)).toEqual(['audio', 'video']);
   });
 
-  it('заглохшая дорожка остаётся в потоке, но объявляется заново', () => {
-    const видео = fakeTrack('video');
-    fakes.nostr.track(видео, {}, 'петя');
+  it('заглохшая makeTrack остаётся в потоке, но объявляется заново', () => {
+    const video = fakeTrack('video');
+    fakes.nostr.track(video, {}, 'петя');
     handlers.onPeerStream.mockClear();
 
-    видео.mute();
+    video.mute();
 
     expect(handlers.onPeerStream).toHaveBeenCalledTimes(1);
-    expect(последний().getVideoTracks()).toEqual([видео]);
+    expect(latest().getVideoTracks()).toEqual([video]);
   });
 });

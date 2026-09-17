@@ -28,10 +28,10 @@ describe('смешное имя', () => {
   });
 
   it('имён хватает, чтобы не повторяться в одном разговоре', () => {
-    const все = new Set();
-    for (let i = 0; i < 400; i++) все.add(makeName());
+    const all = new Set();
+    for (let i = 0; i < 400; i++) all.add(makeName());
 
-    expect(все.size).toBeGreaterThan(200);
+    expect(all.size).toBeGreaterThan(200);
   });
 });
 

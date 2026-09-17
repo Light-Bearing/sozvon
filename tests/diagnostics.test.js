@@ -18,9 +18,9 @@ describe('объяснение про свой ретранслятор', () => 
   });
 
   it('не отвечает — отправляем к машине и брандмауэру', () => {
-    const текст = explainRelay({configured: true, alive: false, accepted: false});
+    const text = explainRelay({configured: true, alive: false, accepted: false});
 
-    expect(текст).toContain('не отвечает');
-    expect(текст).toContain('3478');
+    expect(text).toContain('не отвечает');
+    expect(text).toContain('3478');
   });
 });

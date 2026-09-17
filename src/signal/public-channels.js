@@ -88,21 +88,21 @@ export const joinPublicChannels = ({
     // каждого пересогласования — а оно случается на любое включение
     // микрофона — в потоке копились бы мёртвые дорожки, и проигрыватель
     // брал бы первую из них, то есть показывал пустоту вместо картинки.
-    for (const прежняя of stream.getTracks()) {
-      if (прежняя !== track && прежняя.kind === track.kind) stream.removeTrack(прежняя);
+    for (const existing of stream.getTracks()) {
+      if (existing !== track && existing.kind === track.kind) stream.removeTrack(existing);
     }
     stream.addTrack(track);
 
     // Собеседник выключил камеру — дорожка глохнет, но не исчезает.
     // Перерисовываем, чтобы плитка честно потемнела, а кончившуюся дорожку
     // убираем совсем.
-    const обновить = () => {
+    const refresh = () => {
       if (peerStreams.get(peerId) !== stream) return;
       if (track.readyState === 'ended') stream.removeTrack(track);
       handlers.onPeerStream?.(stream, peerId);
     };
-    for (const событие of ['ended', 'mute', 'unmute']) {
-      track.addEventListener(событие, обновить);
+    for (const event of ['ended', 'mute', 'unmute']) {
+      track.addEventListener(event, refresh);
     }
 
     handlers.onPeerStream?.(stream, peerId);

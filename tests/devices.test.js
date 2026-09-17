@@ -35,7 +35,7 @@ describe('список устройств', () => {
     expect(devices.named).toBe(false);
   });
 
-  it('без поддержки в браузере — пустой список, а не падение', async () => {
+  it('без поддержки в браузере — пустой servers, а не падение', async () => {
     expect(await listDevices(undefined)).toEqual(EMPTY);
     expect(await listDevices({})).toEqual(EMPTY);
   });
