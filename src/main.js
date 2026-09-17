@@ -6,6 +6,7 @@ import {explainFailure, showScreen} from './ui/screens.js';
 import {renderDiagnostics} from './ui/diagnostics.js';
 import {bindHotkeys} from './ui/hotkeys.js';
 import {createSettings} from './ui/settings.js';
+import {createChat} from './ui/chat.js';
 import {makeName, trimName} from './names.js';
 import {recall, remember} from './store.js';
 import {relayFromLink, turnConfigFor} from './turn.js';
@@ -104,6 +105,7 @@ const paint = state =>
         await room.leave();
         room = null;
         settings.close();
+        chat.close();
         location.hash = '';
         showScreen(app, 'start');
       },
@@ -140,6 +142,11 @@ const enter = async secret => {
     fail(error);
   }
 };
+
+const chat = createChat(app, {
+  say: text => Boolean(room?.say(text)),
+  read: () => room?.readChat(),
+});
 
 const settings = createSettings(app, {
   // Что человек вписал сам (пусто — значит согласился на подсказку) и что

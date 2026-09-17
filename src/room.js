@@ -9,6 +9,7 @@ import {createStatsTracker} from './stats.js';
 import {createSpeakingTracker, levelFrom} from './speaking.js';
 import {makeName, trimName} from './names.js';
 import {createFlowTracker} from './flow.js';
+import {createChatLog, trimText} from './chat.js';
 
 const STATS_EVERY_MS = 2_000;
 
@@ -91,6 +92,8 @@ export const createRoom = async ({
     cam: cameraWanted,
     name: myName,
     speaking,
+    messages: chat.all(),
+    unread,
     devices: media.chosen?.() ?? {microphone: null, camera: null},
     peers: [...peers.entries()].map(([peerId, stream]) => ({
       peerId,
@@ -117,6 +120,13 @@ export const createRoom = async ({
   // Канал имён появится ниже, когда будет само подключение, — а нужен он
   // уже в обработчике onPeerJoin, который пишется выше него.
   let namesChannel = null;
+  let chatChannel = null;
+
+  // Переписка. Живёт столько же, сколько соединение: канал данных требует
+  // того же, что и звук. Зато когда связь есть, написать можно всегда.
+  const chat = createChatLog();
+  // Сколько сообщений пришло, пока панель переписки была закрыта.
+  let unread = 0;
 
   // Ничего не захватываем: вход в разговор молчаливый. connectFn() поднимет
   // соединение без единой исходящей дорожки — оно прекрасно принимает
@@ -188,6 +198,17 @@ export const createRoom = async ({
     levels.onMessage = (value, {peerId}) => {
       tracker.report(peerId, value);
       refreshSpeaking();
+    };
+  }
+
+  chatChannel = typeof connection.action === 'function' ? connection.action('chat') : null;
+  if (chatChannel) {
+    chatChannel.onMessage = (raw, {peerId}) => {
+      // Текст чужой, поэтому чистится ровно так же, как свой. На экран он
+      // попадает только через textContent (см. src/ui/chat.js).
+      if (!chat.add({text: raw, from: names.get(peerId) ?? null})) return;
+      unread += 1;
+      announce();
     };
   }
 
@@ -457,6 +478,25 @@ export const createRoom = async ({
       announce();
       return on ? startCamera() : undefined;
     },
+    // Написать можно всегда, пока есть соединение. Своё сообщение кладём
+    // в ленту сразу, не дожидаясь ничего: человек должен видеть, что оно
+    // отправлено, а не гадать.
+    say: text => {
+      const clean = trimText(text);
+      if (!clean) return false;
+      chat.add({text: clean, from: myName, mine: true});
+      void chatChannel?.send(clean);
+      announce();
+      return true;
+    },
+
+    // Панель переписки открыли — непрочитанного больше нет.
+    readChat: () => {
+      if (unread === 0) return;
+      unread = 0;
+      announce();
+    },
+
     // Имя можно менять не выходя из звонка. Пустым оно не бывает: имя, под
     // которым человек согласился остаться, выбирает вызывающий (main.js
     // держит для этого подсказку на весь сеанс), а makeName здесь — только

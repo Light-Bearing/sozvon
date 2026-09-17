@@ -744,3 +744,156 @@ select.field-input {
 @media (prefers-reduced-motion: no-preference) {
   .tile { transition: box-shadow 0.18s ease; }
 }
+
+/* ── переписка ──────────────────────────────────────────── */
+
+.ctl-badge {
+  position: absolute;
+  top: 0.1rem;
+  right: 0.1rem;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: var(--leave);
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.05rem;
+  text-align: center;
+}
+
+#chat-open { position: relative; }
+
+.chat {
+  position: fixed;
+  z-index: 8;
+  inset: 0 0 0 auto;
+  width: min(100vw, 22rem);
+  display: flex;
+  flex-direction: column;
+  padding: var(--pad);
+  padding-block-end: max(var(--pad), env(safe-area-inset-bottom));
+  background: var(--surface);
+  box-shadow: -1px 0 0 var(--line), -24px 0 60px -20px rgba(0, 0, 0, 0.7);
+  animation: slide 0.24s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@keyframes slide { from { translate: 100% 0; } }
+
+.chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: 0.75rem;
+}
+
+.chat-title { font-size: 1rem; font-weight: 500; }
+
+.chat-x {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.chat-x:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+
+.chat-log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-block: 0.25rem;
+}
+
+.chat-empty {
+  margin: auto 0;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--faint);
+}
+
+.msg {
+  max-width: 85%;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.9rem;
+  background: var(--raised);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msg--mine { align-self: flex-end; background: #35323e; }
+
+.msg-who {
+  display: block;
+  margin-block-end: 0.15rem;
+  font-size: 0.6875rem;
+  color: var(--faint);
+}
+
+.chat-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-block-start: 0.75rem;
+}
+
+.chat-text {
+  flex: 1;
+  max-height: 7rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9375rem;
+  resize: none;
+}
+
+.chat-text:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+.chat-send {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  flex: none;
+  border: none;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.chat-send:disabled { opacity: 0.35; cursor: not-allowed; }
+
+@media (max-width: 30rem) {
+  .chat { inset: auto 0 0 0; width: 100%; height: 80dvh; border-radius: 1.25rem 1.25rem 0 0; }
+  @keyframes slide { from { translate: 0 100%; } }
+}
+
+/* Кнопка экрана живёт по своим правилам. У микрофона и камеры белое с
+   перечёркиванием значит «выключено, и это важно знать». У экрана «не
+   показываю» — обычное состояние, кричать о нём незачем; зато идущий
+   показ подсветить стоит: его легко забыть выключить. */
+#screen[aria-pressed='false'] {
+  background: transparent;
+  color: var(--text);
+}
+
+#screen[aria-pressed='false']:hover { background: rgba(255, 255, 255, 0.08); }
+
+#screen[aria-pressed='true'] {
+  background: var(--live);
+  color: var(--ink);
+}

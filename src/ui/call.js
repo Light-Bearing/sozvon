@@ -10,6 +10,7 @@
 
 import {playThrough} from '../devices.js';
 import {explainTrouble} from './screens.js';
+import {renderChat} from './chat.js';
 
 // Картинка есть, когда дорожка жива и не погашена хозяином.
 //
@@ -244,6 +245,8 @@ export const renderCall = (container, state, actions) => {
       state.screen ? 'Прекратить показ экрана' : 'Показать экран',
     );
   }
+
+  renderChat(container, state);
 
   container.querySelector('#hangup').onclick = actions.hangUp;
 };

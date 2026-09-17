@@ -890,3 +890,65 @@ describe('показ экрана', () => {
     expect(media.useScreen).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('переписка', () => {
+  it('в начале лента пуста и непрочитанного нет', async () => {
+    const {room} = await openRoom();
+
+    expect(room.state().messages).toEqual([]);
+    expect(room.state().unread).toBe(0);
+  });
+
+  it('своё сообщение появляется в ленте сразу и уходит собеседникам', async () => {
+    const {room, connection} = await openRoom({name: 'Пётр'});
+
+    expect(room.say('привет')).toBe(true);
+
+    expect(room.state().messages).toEqual([
+      expect.objectContaining({text: 'привет', from: 'Пётр', mine: true}),
+    ]);
+    expect(connection.channel('chat').sent).toEqual(['привет']);
+  });
+
+  it('пустое не отправляется и в ленту не попадает', async () => {
+    const {room, connection} = await openRoom();
+
+    expect(room.say('   ')).toBe(false);
+
+    expect(room.state().messages).toEqual([]);
+    // Канал заводится при старте звонка, а вот отправлено по нему ничего.
+    expect(connection.channel('chat').sent).toEqual([]);
+  });
+
+  it('чужое сообщение подписано именем собеседника', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('name').onMessage('Пётр', {peerId: 'петя'});
+
+    connection.channel('chat').onMessage('и тебе привет', {peerId: 'петя'});
+
+    expect(room.state().messages).toEqual([
+      expect.objectContaining({text: 'и тебе привет', from: 'Пётр', mine: false}),
+    ]);
+  });
+
+  it('пришедшее считается непрочитанным, своё — нет', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+
+    connection.channel('chat').onMessage('ау', {peerId: 'петя'});
+    room.say('слушаю');
+
+    expect(room.state().unread).toBe(1);
+  });
+
+  it('открыли переписку — непрочитанное обнуляется', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('chat').onMessage('ау', {peerId: 'петя'});
+
+    room.readChat();
+
+    expect(room.state().unread).toBe(0);
+  });
+});

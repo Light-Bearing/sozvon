@@ -40,6 +40,13 @@
         <path d="M15 6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15" />
       </symbol>
       <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7" /></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24">
+        <path d="M21 12.5c0 4-4 7-9 7-1 0-2-.1-2.9-.4L4 21l1.2-3.5C3.8 16.1 3 14.4 3 12.5c0-4 4-7 9-7s9 3 9 7Z" />
+      </symbol>
+      <symbol id="i-send" viewBox="0 0 24 24">
+        <path d="m4 12 16-8-5.5 16L12 13.5 4 12Z" />
+      </symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></symbol>
       <symbol id="i-screen" viewBox="0 0 24 24">
         <rect x="2.5" y="4" width="19" height="13" rx="2.5" />
         <path d="M9 20.5h6" />
@@ -128,6 +135,27 @@
           Нажмите, чтобы включить звук
         </button>
 
+        <section id="chat" class="chat" hidden aria-label="Переписка">
+          <header class="chat-head">
+            <span class="chat-title">Переписка</span>
+            <button id="chat-close" class="chat-x" type="button" aria-label="Закрыть переписку">
+              <svg class="i"><use href="#i-close" /></svg>
+            </button>
+          </header>
+          <div id="chat-log" class="chat-log"></div>
+          <p class="chat-empty" id="chat-empty">
+            Здесь можно написать, когда говорить неудобно. Переписка нигде не
+            сохраняется и уходит вместе с разговором.
+          </p>
+          <form id="chat-form" class="chat-form">
+            <textarea id="chat-text" class="chat-text" rows="1" maxlength="2000"
+                      placeholder="Написать…" autocomplete="off"></textarea>
+            <button class="chat-send" type="submit" aria-label="Отправить">
+              <svg class="i"><use href="#i-send" /></svg>
+            </button>
+          </form>
+        </section>
+
         <div id="settings" class="sheet" hidden>
           <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
             <p class="sheet-title" id="settings-title">Настройки</p>
@@ -197,10 +225,13 @@
             <svg class="i i-on"><use href="#i-cam" /></svg>
             <svg class="i i-off"><use href="#i-cam-off" /></svg>
           </button>
+          <button id="chat-open" class="ctl" type="button" aria-label="Переписка" title="Переписка">
+            <svg class="i"><use href="#i-chat" /></svg>
+            <span class="ctl-badge" id="chat-badge" hidden></span>
+          </button>
           <button id="screen" class="ctl" type="button" aria-pressed="false"
                   aria-label="Показать экран" title="Показать экран" hidden>
-            <svg class="i i-on"><use href="#i-screen" /></svg>
-            <svg class="i i-off"><use href="#i-screen-off" /></svg>
+            <svg class="i"><use href="#i-screen" /></svg>
           </button>
           <button id="settings-open" class="ctl" type="button" aria-label="Настройки">
             <svg class="i"><use href="#i-gear" /></svg>
