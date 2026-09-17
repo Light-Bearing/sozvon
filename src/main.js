@@ -54,6 +54,10 @@ if (fromLink) {
 // Зеркалить ли своё изображение. Чужих не зеркалим никогда, поэтому
 // настройка про своё и только про своё.
 let mirror = recall('зеркало') === 'да';
+// Кого показывать крупно. Живёт здесь, а не в комнате: это взгляд одного
+// человека на разговор, собеседникам о нём знать нечего. И не запоминается
+// между звонками — участники в каждом свои.
+let pinned = null;
 
 const saveName = next => {
   given = trimName(next);
@@ -104,15 +108,21 @@ const paint = state =>
       ...state,
       speaker: picked.speaker,
       mirror,
+      pinned,
       relayReady: Boolean(relay.address && relay.secret),
     },
     {
       toggleMicrophone: () => room.setMicrophone(!state.mic),
       toggleCamera: () => room.setCamera(!state.cam),
       toggleScreen: () => void room.setScreen(!state.screen),
+      togglePin: id => {
+        pinned = pinned === id ? null : id;
+        paint(room.state());
+      },
       hangUp: async () => {
         await room.leave();
         room = null;
+        pinned = null;
         settings.close();
         chat.close();
         location.hash = '';

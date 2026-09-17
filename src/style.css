@@ -292,6 +292,12 @@ body {
 
 .tile {
   position: relative;
+  /* Своя область наложения у каждой плитки. Без неё заглушка .tile--dark
+     ::after — непрозрачная и позиционированная — вылезала поверх соседних
+     плиток: она рисуется позже всего непозиционированного, и закреплённый
+     собеседник закрывал собой половину полоски. Дважды на этом обжёгся:
+     сперва пропал значок реакции, потом пропали мелкие плитки. */
+  isolation: isolate;
   aspect-ratio: 4 / 3;
   /* Когда высоты не хватает, плитка ужимается ПО ВЫСОТЕ, сохраняя
      пропорции, и остаётся целиком на виду. */
@@ -875,6 +881,96 @@ select.field-input {
   margin-block-end: 0.15rem;
   font-size: 0.6875rem;
   color: var(--faint);
+}
+
+/* ── крупно и обратно ───────────────────────────────────── */
+
+.tile-pin {
+  position: absolute;
+  z-index: 2;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0.6rem;
+  color: var(--text);
+  background: rgba(10, 9, 12, 0.55);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  /* Не кричит, пока не нужна: на чужом лице лишняя кнопка — помеха. */
+  opacity: 0.35;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.tile:hover .tile-pin,
+.tile-pin:focus-visible { opacity: 1; }
+
+/* Пальцем навести нельзя — там кнопка видна всегда. */
+@media (hover: none) {
+  .tile-pin { opacity: 0.8; }
+}
+
+.tile-pin .i { width: 1rem; height: 1rem; }
+.tile-pin .i-off { display: none; }
+.tile-pin[aria-pressed='true'] { opacity: 1; }
+.tile-pin[aria-pressed='true'] .i-on { display: none; }
+.tile-pin[aria-pressed='true'] .i-off { display: block; }
+
+/* Кто-то закреплён — он и есть экран, остальные уезжают полоской наверх.
+   Мелкие лежат поверх крупного, а не в отдельном узле: переносить <video>
+   между родителями значит перезапускать проигрывание. */
+.tiles[data-pinned]:not([data-pinned='']) {
+  display: block;
+  position: relative;
+}
+
+.tiles[data-pinned]:not([data-pinned='']) .tile {
+  --small-w: clamp(5rem, 22vw, 8rem);
+  position: absolute;
+  /* Слой задаём явно: без него порядок решает место в разметке, и
+     закреплённый собеседник (он идёт посередине списка) закрывает собой
+     тех, кто в разметке выше него. */
+  z-index: 1;
+  /* Отсчёт идёт от края поля, а не от края содержимого: у absolute начало
+     координат — внутренняя граница рамки, и без этих отступов полоска
+     прилипала бы к самому краю экрана. */
+  top: var(--pad);
+  left: calc(var(--pad) + var(--i) * (var(--small-w) + 0.5rem));
+  width: var(--small-w);
+  height: calc(var(--small-w) * 0.62);
+  margin-inline: 0;
+  max-height: none;
+}
+
+/* Полоска лежит поверх крупного и фоном с ним совпадает — без тени и
+   светлой каймы её края просто не видно. */
+.tiles[data-pinned]:not([data-pinned='']) .tile:not(.tile--pinned) {
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+/* В полоске имена нечитаемы, а кнопка нужна — ею и переключаются. */
+.tiles[data-pinned]:not([data-pinned='']) .tile:not(.tile--pinned) .tile-name {
+  display: none;
+}
+
+.tiles[data-pinned]:not([data-pinned='']) .tile:not(.tile--pinned) .tile-pin {
+  top: 0.25rem;
+  right: 0.25rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.45rem;
+}
+
+.tiles[data-pinned]:not([data-pinned='']) .tile--pinned {
+  position: static;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
 }
 
 /* ── реакции ────────────────────────────────────────────── */

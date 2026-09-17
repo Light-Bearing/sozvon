@@ -45,6 +45,15 @@ const makeTile = (id, isSelf) => {
   const name = document.createElement('span');
   name.className = 'tile-name';
 
+  // Крупно — и обратно. Кнопка, а не клик по всей плитке: по плитке
+  // промахиваются пальцем, а объявить её читалке экрана нечем.
+  const pin = document.createElement('button');
+  pin.type = 'button';
+  pin.className = 'tile-pin';
+  pin.innerHTML =
+    '<svg class="i i-on"><use href="#i-expand" /></svg>' +
+    '<svg class="i i-off"><use href="#i-collapse" /></svg>';
+
   // Реакция — картинка, а не текст: читалке экрана её объявлять нечего,
   // а подпись рядом уже сказала, чья это плитка.
   const reaction = document.createElement('span');
@@ -52,7 +61,7 @@ const makeTile = (id, isSelf) => {
   reaction.hidden = true;
   reaction.setAttribute('aria-hidden', 'true');
 
-  box.append(video, name, reaction);
+  box.append(video, name, pin, reaction);
   return box;
 };
 
@@ -220,6 +229,15 @@ export const renderCall = (container, state, actions) => {
   const tiles = container.querySelector('#tiles');
   const present = new Map([...tiles.children].map(box => [box.dataset.peer, box]));
 
+  // Закреплённый мог уйти из разговора. Держаться за его имя нельзя: экран
+  // остался бы пустым, а кнопка «вернуть как было» — ни на чём.
+  const ids = new Set(wanted.map(t => t.id));
+  const pinned = state.pinned && ids.has(state.pinned) ? state.pinned : null;
+  // Закреплять нечего, пока плитка одна.
+  const canPin = wanted.length > 1;
+  tiles.dataset.pinned = pinned ?? '';
+  let small = 0;
+
   for (const {id, stream, label, isSelf} of wanted) {
     const box = present.get(id) ?? makeTile(id, isSelf);
     present.delete(id);
@@ -239,6 +257,20 @@ export const renderCall = (container, state, actions) => {
     // и отсюда моргание плиток и молчащий звук: проигрыватель не успевает
     // начать, как его уже переставили.
     if (box.parentNode !== tiles) tiles.append(box);
+
+    const isPinned = id === pinned;
+    box.classList.toggle('tile--pinned', isPinned);
+    // Полоска мелких считается по порядку: место каждой задаётся номером,
+    // а не отдельным узлом-обёрткой — переносить <video> между родителями
+    // значит перезапускать проигрывание.
+    if (pinned && !isPinned) box.style.setProperty('--i', String(small++));
+    else box.style.removeProperty('--i');
+
+    const pin = box.querySelector('.tile-pin');
+    pin.hidden = !canPin;
+    pin.setAttribute('aria-pressed', isPinned ? 'true' : 'false');
+    pin.setAttribute('aria-label', isPinned ? 'Вернуть как было' : 'Показать крупно');
+    pin.onclick = () => actions.togglePin?.(id);
   }
   // Осталось в present — те, кого уже нет.
   for (const box of present.values()) {

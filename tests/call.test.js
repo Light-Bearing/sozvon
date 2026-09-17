@@ -602,3 +602,83 @@ describe('реакция над плиткой', () => {
     expect(место.textContent).toBe('<img src=x onerror=alert(1)>');
   });
 });
+
+describe('закрепление участника', () => {
+  const troix = (over = {}) =>
+    baseState({
+      peers: [
+        {peerId: 'p0', stream: null, screen: null, name: 'Маша'},
+        {peerId: 'p1', stream: null, screen: null, name: 'Пётр'},
+      ],
+      ...over,
+    });
+
+  it('пока плитка одна, закреплять нечего — кнопки нет', () => {
+    const el = root();
+
+    renderCall(el, baseState({peers: []}), fakeActions());
+
+    expect(el.querySelector('[data-peer="self"] .tile-pin').hidden).toBe(true);
+  });
+
+  it('с собеседниками кнопка появляется у каждого', () => {
+    const el = root();
+
+    renderCall(el, troix(), fakeActions());
+
+    const кнопки = [...el.querySelectorAll('.tile-pin')];
+    expect(кнопки).toHaveLength(3);
+    expect(кнопки.every(b => b.hidden === false)).toBe(true);
+  });
+
+  it('нажатие зовёт закрепление именно этой плитки', () => {
+    const el = root();
+    const actions = {...fakeActions(), togglePin: vi.fn()};
+
+    renderCall(el, troix(), actions);
+    el.querySelector('[data-peer="p1"] .tile-pin').click();
+
+    expect(actions.togglePin).toHaveBeenCalledWith('p1');
+  });
+
+  it('закреплённый помечен, остальные получают номера по порядку', () => {
+    const el = root();
+
+    renderCall(el, troix({pinned: 'p1'}), fakeActions());
+
+    expect(el.querySelector('#tiles').dataset.pinned).toBe('p1');
+    expect(el.querySelector('[data-peer="p1"]').classList.contains('tile--pinned')).toBe(true);
+    expect(el.querySelector('[data-peer="self"]').style.getPropertyValue('--i')).toBe('0');
+    expect(el.querySelector('[data-peer="p0"]').style.getPropertyValue('--i')).toBe('1');
+    expect(el.querySelector('[data-peer="p1"]').style.getPropertyValue('--i')).toBe('');
+  });
+
+  it('у закреплённого кнопка говорит «вернуть как было»', () => {
+    const el = root();
+
+    renderCall(el, troix({pinned: 'p1'}), fakeActions());
+
+    const его = el.querySelector('[data-peer="p1"] .tile-pin');
+    const чужая = el.querySelector('[data-peer="p0"] .tile-pin');
+    expect(его.getAttribute('aria-pressed')).toBe('true');
+    expect(его.getAttribute('aria-label')).toBe('Вернуть как было');
+    expect(чужая.getAttribute('aria-pressed')).toBe('false');
+    expect(чужая.getAttribute('aria-label')).toBe('Показать крупно');
+  });
+
+  it('закреплённый ушёл — раскладка возвращается сама', () => {
+    // Иначе экран остался бы пустым: крупной плитки нет, а мелкие лежат
+    // полоской в углу и больше ничем не заняты.
+    const el = root();
+    renderCall(el, troix({pinned: 'p1'}), fakeActions());
+
+    renderCall(
+      el,
+      baseState({peers: [{peerId: 'p0', stream: null, screen: null, name: 'Маша'}], pinned: 'p1'}),
+      fakeActions(),
+    );
+
+    expect(el.querySelector('#tiles').dataset.pinned).toBe('');
+    expect(el.querySelector('[data-peer="self"]').style.getPropertyValue('--i')).toBe('');
+  });
+});
