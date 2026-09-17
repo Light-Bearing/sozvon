@@ -9,7 +9,7 @@ import {createStatsTracker} from './stats.js';
 import {createSpeakingTracker, levelFrom} from './speaking.js';
 import {makeName, trimName} from './names.js';
 import {createFlowTracker} from './flow.js';
-import {createChatLog, trimText} from './chat.js';
+import {createChatLog, isReaction, trimText} from './chat.js';
 
 const STATS_EVERY_MS = 2_000;
 
@@ -97,6 +97,7 @@ export const createRoom = async ({
     speaking,
     messages: chat.all(),
     unread,
+    reactions: new Map(reactions),
     devices: media.chosen?.() ?? {microphone: null, camera: null},
     peers: [...peers.entries()].map(([peerId, stream]) => ({
       peerId,
@@ -134,6 +135,32 @@ export const createRoom = async ({
   // Сколько сообщений пришло, пока панель переписки была закрыта.
   let unread = 0;
 
+  // Реакции живут секунды: это жест, а не запись. Держим последнюю от
+  // каждого и гасим по таймеру. Ключ — тот же, каким зовётся плитка:
+  // 'self' для себя, идентификатор собеседника для остальных.
+  const REACTION_MS = 4000;
+  const reactions = new Map();
+  const fading = new Map();
+
+  const flash = (id, emoji) => {
+    clearTimeout(fading.get(id));
+    reactions.set(id, {emoji, at: Date.now()});
+    fading.set(
+      id,
+      setTimeout(() => {
+        fading.delete(id);
+        reactions.delete(id);
+        announce();
+      }, REACTION_MS),
+    );
+  };
+
+  const forgetReaction = id => {
+    clearTimeout(fading.get(id));
+    fading.delete(id);
+    reactions.delete(id);
+  };
+
   // Ничего не захватываем: вход в разговор молчаливый. connectFn() поднимет
   // соединение без единой исходящей дорожки — оно прекрасно принимает
   // входящее медиа и без своего. media.stop() в catch — подстраховка на
@@ -167,6 +194,7 @@ export const createRoom = async ({
           peers.delete(peerId);
           screens.delete(peerId);
           names.delete(peerId);
+          forgetReaction(peerId);
           announce();
         },
         onPeerStream: (peerStream, peerId, role = 'camera') => {
@@ -215,7 +243,10 @@ export const createRoom = async ({
       // Текст чужой, поэтому чистится ровно так же, как свой. На экран он
       // попадает только через textContent (см. src/ui/chat.js).
       if (!chat.add({text: raw, from: names.get(peerId) ?? null})) return;
-      unread += 1;
+      // Реакцию человек уже увидел над плиткой — будить ею счётчик
+      // непрочитанного значит звать читать то, что читать нечего.
+      if (isReaction(raw)) flash(peerId, trimText(raw));
+      else unread += 1;
       announce();
     };
   }
@@ -500,6 +531,7 @@ export const createRoom = async ({
       const clean = trimText(text);
       if (!clean) return false;
       chat.add({text: clean, from: myName, mine: true});
+      if (isReaction(clean)) flash('self', clean);
       void chatChannel?.send(clean);
       announce();
       return true;
@@ -551,6 +583,7 @@ export const createRoom = async ({
     leave: async () => {
       clearInterval(timer);
       clearInterval(speakingTimer);
+      for (const id of [...fading.keys()]) forgetReaction(id);
       stopLevelMeter();
       media.stop();
       await connection.leave();

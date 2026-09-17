@@ -4,7 +4,7 @@
 // из сети рядом с innerHTML быть не должно: это единственное место, куда
 // собеседник может написать что угодно.
 
-import {timeOf} from '../chat.js';
+import {isReaction, timeOf} from '../chat.js';
 
 const bubble = ({text, from, mine, at}) => {
   const box = document.createElement('div');
@@ -15,6 +15,9 @@ const bubble = ({text, from, mine, at}) => {
   who.textContent = `${mine ? 'вы' : (from ?? 'собеседник')} · ${timeOf(at)}`;
 
   const body = document.createElement('span');
+  // Значок в ленте показываем крупно: мелким он читается как опечатка,
+  // а не как ответ. Это тот же текст, просто другого кегля.
+  if (isReaction(text)) body.className = 'msg-reaction';
   body.textContent = text;
 
   box.append(who, body);
@@ -79,6 +82,12 @@ export const createChat = (root, actions) => {
     event.preventDefault();
     send();
   };
+
+  // Реакция уходит сразу, без «отправить»: в этом вся её польза — одно
+  // касание вместо «разблокировать, набрать, послать».
+  for (const button of root.querySelectorAll('[data-reaction]')) {
+    button.onclick = () => void actions.say?.(button.dataset.reaction);
+  }
 
   root.querySelector('#chat-open').onclick = () => (panel.hidden ? open() : close());
   root.querySelector('#chat-close').onclick = close;

@@ -17,6 +17,32 @@ export const trimText = raw =>
     .trim()
     .slice(0, MAX_TEXT) || null;
 
+// Реакция — сообщение из одних значков, не длиннее трёх. Такое пишут не
+// чтобы прочитали, а чтобы увидели: оно всплывает крупно над плиткой того,
+// кто послал, и не будит счётчик непрочитанного. В ленте всё равно
+// остаётся — разговор должен помнить, что в нём было.
+//
+// Emoji_Component намеренно не в наборе: туда входят обычные цифры, и «12»
+// сошло бы за реакцию.
+const ONLY_PICTURES =
+  /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|\u200d|\ufe0f)+$/u;
+
+// Значок из нескольких кодовых точек (семья, флаг, тон кожи) — это один
+// знак для глаза, и считать надо именно так.
+const graphemes =
+  typeof Intl?.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, {granularity: 'grapheme'})
+    : null;
+
+export const MAX_REACTION = 3;
+
+export const isReaction = raw => {
+  const clean = trimText(raw);
+  if (!clean || !ONLY_PICTURES.test(clean)) return false;
+  const count = graphemes ? [...graphemes.segment(clean)].length : [...clean].length;
+  return count <= MAX_REACTION;
+};
+
 export const createChatLog = ({limit = MAX_KEPT} = {}) => {
   let messages = [];
 

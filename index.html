@@ -51,12 +51,6 @@
         <rect x="2.5" y="4" width="19" height="13" rx="2.5" />
         <path d="M9 20.5h6" />
       </symbol>
-      <symbol id="i-screen-off" viewBox="0 0 24 24">
-        <path d="M8 4h11a2.5 2.5 0 0 1 2.5 2.5v8A2.5 2.5 0 0 1 19 17h-2" />
-        <path d="M13 17H5a2.5 2.5 0 0 1-2.5-2.5v-8A2.5 2.5 0 0 1 4 4.2" />
-        <path d="M9 20.5h6" />
-        <path d="m4 3 16 18" />
-      </symbol>
       <!-- Ползунки, а не шестерёнка: на 20 пикселях зубцы сливаются в круг
            с лучами и читаются как солнце. Проверено на человеке. -->
       <symbol id="i-gear" viewBox="0 0 24 24">
@@ -151,6 +145,19 @@
             Здесь можно написать, когда говорить неудобно. Переписка нигде не
             сохраняется и уходит вместе с разговором.
           </p>
+          <!-- Реакция — тот же путь, что и сообщение: ничего нового по
+               проводу не едет, просто значок вместо слов. Живёт рядом с
+               полем ввода, потому что это одно и то же действие —
+               сказать, не перебивая. -->
+          <div class="chat-reactions" role="group" aria-label="Реакции">
+            <button class="chat-reaction" type="button" data-reaction="👍" aria-label="Отправить: палец вверх">👍</button>
+            <button class="chat-reaction" type="button" data-reaction="❤️" aria-label="Отправить: сердце">❤️</button>
+            <button class="chat-reaction" type="button" data-reaction="😂" aria-label="Отправить: смех">😂</button>
+            <button class="chat-reaction" type="button" data-reaction="🎉" aria-label="Отправить: праздник">🎉</button>
+            <button class="chat-reaction" type="button" data-reaction="👏" aria-label="Отправить: аплодисменты">👏</button>
+            <button class="chat-reaction" type="button" data-reaction="🤔" aria-label="Отправить: задумчивость">🤔</button>
+          </div>
+
           <form id="chat-form" class="chat-form">
             <textarea id="chat-text" class="chat-text" rows="1" maxlength="2000"
                       placeholder="Написать…" autocomplete="off"></textarea>

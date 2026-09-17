@@ -976,3 +976,71 @@ describe('переписка', () => {
     expect(room.state().unread).toBe(0);
   });
 });
+
+describe('реакции', () => {
+  it('чужая реакция всплывает над плиткой того, кто послал', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+
+    connection.channel('chat').onMessage('👍', {peerId: 'петя'});
+
+    expect(room.state().reactions.get('петя')).toEqual(
+      expect.objectContaining({emoji: '👍'}),
+    );
+  });
+
+  it('реакция не будит счётчик непрочитанного, а слово — будит', async () => {
+    // Реакцию человек уже увидел над плиткой. Звать его открывать
+    // переписку ради значка — значит обещать там то, чего нет.
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+
+    connection.channel('chat').onMessage('👍', {peerId: 'петя'});
+    expect(room.state().unread).toBe(0);
+
+    connection.channel('chat').onMessage('привет', {peerId: 'петя'});
+    expect(room.state().unread).toBe(1);
+  });
+
+  it('реакция всё равно остаётся в ленте', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+
+    connection.channel('chat').onMessage('👍', {peerId: 'петя'});
+
+    expect(room.state().messages).toEqual([
+      expect.objectContaining({text: '👍', mine: false}),
+    ]);
+  });
+
+  it('своя реакция всплывает над своей плиткой и уходит собеседникам', async () => {
+    const {room, connection} = await openRoom();
+
+    room.say('🎉');
+
+    expect(room.state().reactions.get('self')).toEqual(
+      expect.objectContaining({emoji: '🎉'}),
+    );
+    expect(connection.channel('chat').sent).toEqual(['🎉']);
+  });
+
+  it('через четыре секунды гаснет', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('chat').onMessage('👍', {peerId: 'петя'});
+
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    expect(room.state().reactions.has('петя')).toBe(false);
+  });
+
+  it('ушедший не оставляет после себя значка', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('chat').onMessage('👍', {peerId: 'петя'});
+
+    connection.handlers.onPeerLeave('петя');
+
+    expect(room.state().reactions.has('петя')).toBe(false);
+  });
+});

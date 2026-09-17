@@ -877,6 +877,79 @@ select.field-input {
   color: var(--faint);
 }
 
+/* ── реакции ────────────────────────────────────────────── */
+
+.chat-reactions {
+  display: flex;
+  gap: 0.25rem;
+  margin-block-start: 0.75rem;
+  /* На узком телефоне шесть значков в строку не встают — пусть уезжают
+     вбок, а не ломают панель. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chat-reactions::-webkit-scrollbar { display: none; }
+
+.chat-reaction {
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 1.35rem;
+  line-height: 1;
+  border: 0;
+  border-radius: 0.75rem;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.08s ease;
+}
+
+.chat-reaction:hover { background: var(--raised); }
+.chat-reaction:active { transform: scale(0.92); }
+
+/* Всплывает над плиткой того, кто послал. Четыре секунды — столько же
+   держит реакцию комната (REACTION_MS в src/room.js); разойдутся эти два
+   числа — значок либо мигнёт и пропадёт, либо застынет. */
+.tile-reaction {
+  position: absolute;
+  /* Выше заглушки .tile--dark::after: та кроет плитку целиком и рисуется
+     последней среди детей, поэтому без слоя значок исправно существовал,
+     занимал место и был непрозрачен — но на экране его закрывала буква. */
+  z-index: 2;
+  left: 50%;
+  bottom: 18%;
+  font-size: clamp(2rem, 9vmin, 4.5rem);
+  line-height: 1;
+  pointer-events: none;
+  animation: reaction-float 4s ease-out forwards;
+}
+
+@keyframes reaction-float {
+  0% { opacity: 0; transform: translate(-50%, 0.75rem) scale(0.6); }
+  12% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  70% { opacity: 1; transform: translate(-50%, -1.25rem) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -3.5rem) scale(0.9); }
+}
+
+/* Общее правило выше сжимает любую анимацию до мгновения. Для реакции это
+   означало бы «сразу конец», то есть прозрачность ноль: значок не увидели
+   бы вовсе. Здесь движение выключаем, а показ оставляем — гасит его
+   таймер комнаты. */
+@media (prefers-reduced-motion: reduce) {
+  .tile-reaction {
+    animation: none !important;
+    transform: translate(-50%, -1rem);
+  }
+}
+
+.msg-reaction {
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
 .chat-form {
   display: flex;
   gap: 0.5rem;

@@ -130,3 +130,61 @@ describe('окно переписки', () => {
     expect(actions.say).toHaveBeenCalledWith('привет');
   });
 });
+
+describe('кнопки реакций', () => {
+  const setup = () => {
+    const el = root();
+    const actions = {say: vi.fn(() => true), read: vi.fn()};
+    return {el, actions, chat: createChat(el, actions)};
+  };
+
+  // Искать пришлось бы селектором [data-reaction="👍"], но jsdom по
+  // значению атрибута со значком не находит ничего: его разборщик
+  // селекторов не умеет суррогатные пары. В самом приложении такого
+  // селектора нет — там перебор по [data-reaction] без значения.
+  const кнопка = (el, значок) =>
+    [...el.querySelectorAll('[data-reaction]')].find(b => b.dataset.reaction === значок);
+
+  it('нажатие отправляет значок сразу, без «отправить»', () => {
+    const {el, actions} = setup();
+
+    кнопка(el, '👍').click();
+
+    expect(actions.say).toHaveBeenCalledWith('👍');
+  });
+
+  it('поле ввода при этом не трогается', () => {
+    // Человек мог начать набирать сообщение и по дороге хлопнуть в
+    // ладоши — набранное должно остаться на месте.
+    const {el} = setup();
+    const поле = el.querySelector('#chat-text');
+    поле.value = 'сейчас допишу';
+
+    кнопка(el, '🎉').click();
+
+    expect(поле.value).toBe('сейчас допишу');
+  });
+
+  it('у каждой кнопки есть словесная подпись для читалки экрана', () => {
+    const {el} = setup();
+    const все = [...el.querySelectorAll('[data-reaction]')];
+
+    expect(все.length).toBeGreaterThan(0);
+    for (const b of все) {
+      expect(b.getAttribute('aria-label')).toMatch(/\S/);
+      expect(b.type).toBe('button');
+    }
+  });
+});
+
+describe('значок в ленте', () => {
+  it('сообщение из одних значков показывается крупно', () => {
+    const el = root();
+
+    renderChat(el, {messages: [msg({text: '👍'}), msg({text: 'ага'})]});
+
+    const [значок, слово] = el.querySelectorAll('.msg');
+    expect(значок.querySelector('.msg-reaction')).not.toBe(null);
+    expect(слово.querySelector('.msg-reaction')).toBe(null);
+  });
+});

@@ -45,7 +45,14 @@ const makeTile = (id, isSelf) => {
   const name = document.createElement('span');
   name.className = 'tile-name';
 
-  box.append(video, name);
+  // Реакция — картинка, а не текст: читалке экрана её объявлять нечего,
+  // а подпись рядом уже сказала, чья это плитка.
+  const reaction = document.createElement('span');
+  reaction.className = 'tile-reaction';
+  reaction.hidden = true;
+  reaction.setAttribute('aria-hidden', 'true');
+
+  box.append(video, name, reaction);
   return box;
 };
 
@@ -72,7 +79,28 @@ const askForSound = container => {
   };
 };
 
-const updateTile = (box, stream, label, isSelf, speaker, speaking, mirror) => {
+// Вспышка реакции. Ставим ровно тогда, когда она сменилась: перерисовок
+// несколько в секунду, и без этой проверки значок дёргался бы без конца.
+const showReaction = (box, reaction) => {
+  const spot = box.querySelector('.tile-reaction');
+  if (!spot) return;
+  if (!reaction) {
+    spot.hidden = true;
+    delete spot.dataset.at;
+    return;
+  }
+  if (spot.dataset.at === String(reaction.at)) return;
+  spot.dataset.at = String(reaction.at);
+  spot.textContent = reaction.emoji;
+  spot.hidden = false;
+  // Сброс движения: вторая подряд реакция иначе появилась бы неподвижной —
+  // анимация уже отыграла и сама себя не повторяет.
+  spot.style.animation = 'none';
+  void spot.offsetWidth;
+  spot.style.animation = '';
+};
+
+const updateTile = (box, stream, label, isSelf, speaker, speaking, mirror, reaction) => {
   const video = box.querySelector('video');
   // Присваиваем srcObject только когда поток и вправду сменился: лишнее
   // присваивание перезапускает проигрывание.
@@ -120,6 +148,8 @@ const updateTile = (box, stream, label, isSelf, speaker, speaking, mirror) => {
 
   const name = box.querySelector('.tile-name');
   if (name.textContent !== label) name.textContent = label;
+
+  showReaction(box, reaction);
 };
 
 // Собеседник назвался — зовём как просил. Не назвался (имя ещё не дошло
@@ -201,6 +231,7 @@ export const renderCall = (container, state, actions) => {
       state.speaker,
       state.speaking?.includes(id),
       state.mirror,
+      state.reactions?.get(id),
     );
     // Вставляем ТОЛЬКО новые. append() для узла, который уже лежит здесь,
     // означает «вынуть и вставить заново» — а для <video> это перезапуск

@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {MAX_KEPT, MAX_TEXT, createChatLog, timeOf, trimText} from '../src/chat.js';
+import {MAX_KEPT, MAX_TEXT, createChatLog, isReaction, timeOf, trimText} from '../src/chat.js';
 
 describe('чистка написанного', () => {
   it('обрезает края и лишние пустые строки', () => {
@@ -75,5 +75,44 @@ describe('лента сообщений', () => {
 describe('время сообщения', () => {
   it('часы и минуты, без секунд', () => {
     expect(timeOf(Date.UTC(2026, 8, 17, 9, 5))).toMatch(/^\d{2}:\d{2}$/);
+  });
+});
+
+describe('реакции', () => {
+  it('значок — реакция, слово — нет', () => {
+    expect(isReaction('👍')).toBe(true);
+    expect(isReaction('❤️')).toBe(true);
+    expect(isReaction('ок')).toBe(false);
+  });
+
+  it('до трёх значков подряд — всё ещё реакция', () => {
+    expect(isReaction('🎉🎉🎉')).toBe(true);
+    expect(isReaction('🎉🎉🎉🎉')).toBe(false);
+  });
+
+  it('составной значок считается за один', () => {
+    // Флаг, семья и тон кожи — это несколько кодовых точек, но один знак
+    // для глаза. Считать по кодовым точкам значило бы объявить флаг
+    // «двумя значками», а семью — четырьмя.
+    expect(isReaction('🇰🇿')).toBe(true);
+    expect(isReaction('👨‍👩‍👧')).toBe(true);
+    expect(isReaction('👍🏽')).toBe(true);
+  });
+
+  it('цифры реакцией не считаются', () => {
+    // Юникод числит цифры среди Emoji_Component — на этом легко
+    // поскользнуться и принять «12» за значок.
+    expect(isReaction('12')).toBe(false);
+    expect(isReaction('0')).toBe(false);
+  });
+
+  it('значок со словами — обычное сообщение', () => {
+    expect(isReaction('👍 хорошо')).toBe(false);
+  });
+
+  it('пустое реакцией не бывает', () => {
+    expect(isReaction('')).toBe(false);
+    expect(isReaction('   ')).toBe(false);
+    expect(isReaction(undefined)).toBe(false);
   });
 });

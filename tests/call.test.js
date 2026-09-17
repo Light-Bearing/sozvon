@@ -547,3 +547,58 @@ describe('экран — отдельная плитка', () => {
     expect(el.querySelector('[data-peer="self"]')).not.toBe(null);
   });
 });
+
+describe('реакция над плиткой', () => {
+  const withPeer = (reactions, extra = {}) =>
+    baseState({
+      peers: [{peerId: 'петя', stream: null, screen: null, name: 'Пётр'}],
+      reactions,
+      ...extra,
+    });
+
+  it('появляется на плитке того, кто послал, и только на ней', () => {
+    const el = root();
+
+    renderCall(el, withPeer(new Map([['петя', {emoji: '👍', at: 1}]])), fakeActions());
+
+    const мой = el.querySelector('[data-peer="self"] .tile-reaction');
+    const его = el.querySelector('[data-peer="петя"] .tile-reaction');
+    expect(его.hidden).toBe(false);
+    expect(его.textContent).toBe('👍');
+    expect(мой.hidden).toBe(true);
+  });
+
+  it('без реакции значка не видно', () => {
+    const el = root();
+
+    renderCall(el, withPeer(new Map()), fakeActions());
+
+    expect(el.querySelector('[data-peer="петя"] .tile-reaction').hidden).toBe(true);
+  });
+
+  it('погасшая реакция убирается с плитки', () => {
+    const el = root();
+    renderCall(el, withPeer(new Map([['петя', {emoji: '👍', at: 1}]])), fakeActions());
+
+    renderCall(el, withPeer(new Map()), fakeActions());
+
+    expect(el.querySelector('[data-peer="петя"] .tile-reaction').hidden).toBe(true);
+  });
+
+  it('чужая строка попадает на экран текстом, а не разметкой', () => {
+    // Реакция — новое место, куда приходит чужая строка. Проверка ровно
+    // та же, что у переписки: значок присылает собеседник, и если его
+    // когда-нибудь пустят в innerHTML, это будет дыра.
+    const el = root();
+
+    renderCall(
+      el,
+      withPeer(new Map([['петя', {emoji: '<img src=x onerror=alert(1)>', at: 1}]])),
+      fakeActions(),
+    );
+
+    const место = el.querySelector('[data-peer="петя"] .tile-reaction');
+    expect(место.querySelector('img')).toBe(null);
+    expect(место.textContent).toBe('<img src=x onerror=alert(1)>');
+  });
+});
