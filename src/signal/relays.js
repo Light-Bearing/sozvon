@@ -1,4 +1,3 @@
-import {defaultRelayUrls as torrentDefaults} from '@trystero-p2p/torrent';
 import {defaultRelayUrls as nostrDefaults} from '@trystero-p2p/nostr';
 import {defaultRelayUrls as mqttDefaults} from '@trystero-p2p/mqtt';
 
@@ -7,7 +6,6 @@ import {defaultRelayUrls as mqttDefaults} from '@trystero-p2p/mqtt';
 export const VERIFIED_ON = '2026-09-14';
 
 export const VERIFIED = {
-  torrent: ['wss://tracker.openwebtorrent.com', 'wss://tracker.webtorrent.dev'],
   nostr: ['wss://nos.lol', 'wss://relay.snort.social'],
   mqtt: ['wss://broker.hivemq.com:8884/mqtt'],
 };
@@ -17,7 +15,6 @@ export const VERIFIED = {
 export const REDUNDANCY = 4;
 
 const DEFAULTS = {
-  torrent: torrentDefaults,
   nostr: nostrDefaults,
   mqtt: mqttDefaults,
 };

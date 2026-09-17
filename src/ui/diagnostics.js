@@ -145,7 +145,7 @@ const pingRelay = url =>
   });
 
 export const checkRelays = async () => {
-  const targets = ['torrent', 'nostr', 'mqtt'].flatMap(family =>
+  const targets = ['nostr', 'mqtt'].flatMap(family =>
     relayUrlsFor(family).map(url => ({family, url})),
   );
   const checked = await Promise.all(
@@ -237,7 +237,7 @@ export const renderDiagnostics = async (container, relay) => {
     'p',
     families.size === 0
       ? 'Ни один канал не отвечает. Остаётся ручной обмен.'
-      : `Живых адресов ${alive.length} из ${relays.length}, независимых семейств ${families.size} из 3.`,
+      : `Живых адресов ${alive.length} из ${relays.length}, независимых семейств ${families.size} из 2.`,
   );
 
   const list = document.createElement('ul');

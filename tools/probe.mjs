@@ -19,10 +19,6 @@ const STUN_SERVERS = [
 ];
 
 const WS_TARGETS = [
-  ['торрент-трекер', 'wss://tracker.openwebtorrent.com'],
-  ['торрент-трекер', 'wss://tracker.webtorrent.dev'],
-  ['торрент-трекер', 'wss://tracker.btorrent.xyz'],
-  ['торрент-трекер', 'wss://tracker.files.fm:7073/announce'],
   ['nostr-релей', 'wss://relay.damus.io'],
   ['nostr-релей', 'wss://nos.lol'],
   ['nostr-релей', 'wss://relay.nostr.band'],

@@ -2,7 +2,7 @@ import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {familiesFor, joinPublicChannels, parseFamilyNames} from '../src/signal/public-channels.js';
 import {relayUrlsFor} from '../src/signal/relays.js';
 
-const FAMILY_NAMES = ['torrent', 'nostr', 'mqtt'];
+const FAMILY_NAMES = ['nostr', 'mqtt'];
 
 // Поток собеседника приложение собирает само, поэтому «поток» в тестах —
 // не пустышка с полем id, а нечто, у чего есть дорожки.
@@ -156,14 +156,13 @@ describe('публичные каналы: адресная доставка', (
 
   describe('addStream', () => {
     it('участник, известный двум семействам, получает поток один раз — в комнате владельца', () => {
-      fakes.torrent.join('петя');
       fakes.nostr.join('петя');
+      fakes.mqtt.join('петя');
       const stream = {id: 'stream-1'};
 
       connection.addStream(stream);
 
-      expect(fakes.torrent.addStreamCalls).toEqual([{stream, target: 'петя'}]);
-      expect(fakes.nostr.addStreamCalls).toEqual([]);
+      expect(fakes.nostr.addStreamCalls).toEqual([{stream, target: 'петя'}]);
       expect(fakes.mqtt.addStreamCalls).toEqual([]);
     });
 
@@ -171,11 +170,11 @@ describe('публичные каналы: адресная доставка', (
       const stream = {id: 'stream-1'};
 
       connection.addStream(stream);
-      fakes.torrent.join('петя');
       fakes.nostr.join('петя');
+      fakes.mqtt.join('петя');
 
-      expect(fakes.torrent.addStreamCalls).toEqual([{stream, target: 'петя'}]);
-      expect(fakes.nostr.addStreamCalls).toEqual([]);
+      expect(fakes.nostr.addStreamCalls).toEqual([{stream, target: 'петя'}]);
+      expect(fakes.mqtt.addStreamCalls).toEqual([]);
     });
   });
 
@@ -185,28 +184,27 @@ describe('публичные каналы: адресная доставка', (
   // владельца, никогда широковещательно.
   describe('addTrack и removeTrack', () => {
     it('дорожка уходит только владельцу, адресно', () => {
-      fakes.torrent.join('петя');
       fakes.nostr.join('петя');
+      fakes.mqtt.join('петя');
       const track = {id: 'track-1'};
       const stream = {id: 'stream-1'};
 
       connection.addTrack(track, stream);
 
-      expect(fakes.torrent.addTrackCalls).toEqual([{track, stream, target: 'петя'}]);
-      expect(fakes.nostr.addTrackCalls).toEqual([]);
+      expect(fakes.nostr.addTrackCalls).toEqual([{track, stream, target: 'петя'}]);
       expect(fakes.mqtt.addTrackCalls).toEqual([]);
     });
 
     it('несколько участников из разных семейств — каждому своя адресная дорожка', () => {
-      fakes.torrent.join('аня');
-      fakes.nostr.join('боря');
+      fakes.nostr.join('аня');
+      fakes.mqtt.join('боря');
       const track = {id: 'track-1'};
       const stream = {id: 'stream-1'};
 
       connection.addTrack(track, stream);
 
-      expect(fakes.torrent.addTrackCalls).toEqual([{track, stream, target: 'аня'}]);
-      expect(fakes.nostr.addTrackCalls).toEqual([{track, stream, target: 'боря'}]);
+      expect(fakes.nostr.addTrackCalls).toEqual([{track, stream, target: 'аня'}]);
+      expect(fakes.mqtt.addTrackCalls).toEqual([{track, stream, target: 'боря'}]);
     });
 
     it('дорожка, добавленная заранее, доразмечается новому участнику вместе с остальным потоком', () => {
@@ -214,66 +212,64 @@ describe('публичные каналы: адресная доставка', (
       const stream = {id: 'stream-1'};
 
       connection.addTrack(track, stream);
-      fakes.torrent.join('петя');
       fakes.nostr.join('петя');
+      fakes.mqtt.join('петя');
 
       // Как и у addStream() выше: localStream досылается новому участнику
       // целиком через onPeerJoin() — отдельного addTrackCalls «задним
       // числом» для позже подключившихся нет и не нужно.
-      expect(fakes.torrent.addStreamCalls).toEqual([{stream, target: 'петя'}]);
-      expect(fakes.nostr.addStreamCalls).toEqual([]);
+      expect(fakes.nostr.addStreamCalls).toEqual([{stream, target: 'петя'}]);
+      expect(fakes.mqtt.addStreamCalls).toEqual([]);
     });
 
     it('removeTrack снимает дорожку только у владельца, тоже адресно', () => {
-      fakes.torrent.join('петя');
       fakes.nostr.join('петя');
+      fakes.mqtt.join('петя');
       const track = {id: 'track-1'};
 
       connection.removeTrack(track);
 
-      expect(fakes.torrent.removeTrackCalls).toEqual([{track, target: 'петя'}]);
-      expect(fakes.nostr.removeTrackCalls).toEqual([]);
+      expect(fakes.nostr.removeTrackCalls).toEqual([{track, target: 'петя'}]);
       expect(fakes.mqtt.removeTrackCalls).toEqual([]);
     });
   });
 
   describe('action(namespace).send', () => {
     it('уходит адресно и сгруппировано по владельцу, а каналу без участников — ничего', async () => {
-      fakes.torrent.join('аня');
-      fakes.torrent.join('боря');
-      fakes.nostr.join('вера');
+      fakes.nostr.join('аня');
+      fakes.nostr.join('боря');
+      fakes.mqtt.join('вера');
 
       await connection.action('chat').send({text: 'привет'});
 
-      expect(fakes.torrent.action('chat').calls).toEqual([
+      expect(fakes.nostr.action('chat').calls).toEqual([
         {data: {text: 'привет'}, target: ['аня', 'боря']},
       ]);
-      expect(fakes.nostr.action('chat').calls).toEqual([
+      expect(fakes.mqtt.action('chat').calls).toEqual([
         {data: {text: 'привет'}, target: ['вера']},
       ]);
-      expect(fakes.mqtt.action('chat').calls).toEqual([]);
     });
   });
 
   describe('onPeerStream', () => {
     it('второй поток от уже принятого участника наверх не проходит', () => {
-      fakes.torrent.join('петя');
+      fakes.nostr.join('петя');
       const первый = fakeTrack('audio');
       const второй = fakeTrack('audio');
 
-      fakes.torrent.stream(fakeStream(первый), 'петя');
-      fakes.torrent.stream(fakeStream(второй), 'петя');
+      fakes.nostr.stream(fakeStream(первый), 'петя');
+      fakes.nostr.stream(fakeStream(второй), 'петя');
 
       expect(handlers.onPeerStream).toHaveBeenCalledTimes(1);
       expect(handlers.onPeerStream.mock.calls[0][0].getTracks()).toEqual([первый]);
     });
 
     it('принимается от любого семейства, не только от владельца', () => {
-      fakes.torrent.join('петя');
       fakes.nostr.join('петя');
+      fakes.mqtt.join('петя');
       const дорожка = fakeTrack('video');
 
-      fakes.nostr.stream(fakeStream(дорожка), 'петя');
+      fakes.mqtt.stream(fakeStream(дорожка), 'петя');
 
       expect(handlers.onPeerStream).toHaveBeenCalledTimes(1);
       expect(handlers.onPeerStream.mock.calls[0][0].getTracks()).toEqual([дорожка]);
@@ -282,10 +278,10 @@ describe('публичные каналы: адресная доставка', (
 
   describe('призрак', () => {
     it('ушёл владелец, но соседнее семейство ещё видит участника — наверх не сообщаем, участник остаётся в getPeers()', () => {
-      fakes.torrent.join('петя');
       fakes.nostr.join('петя');
+      fakes.mqtt.join('петя');
 
-      fakes.torrent.leave('петя');
+      fakes.nostr.leave('петя');
 
       expect(handlers.onPeerLeave).not.toHaveBeenCalled();
       expect(connection.getPeers()).toHaveProperty('петя');
@@ -294,22 +290,22 @@ describe('публичные каналы: адресная доставка', (
     it('живой поток переотправляется адресно в комнату нового владельца', () => {
       const stream = {id: 's1'};
       connection.addStream(stream);
-      fakes.torrent.join('петя');
       fakes.nostr.join('петя');
+      fakes.mqtt.join('петя');
 
-      fakes.torrent.leave('петя');
+      fakes.nostr.leave('петя');
 
-      expect(fakes.nostr.addStreamCalls).toEqual([{stream, target: 'петя'}]);
+      expect(fakes.mqtt.addStreamCalls).toEqual([{stream, target: 'петя'}]);
     });
 
     it('ушёл последний — вот тогда сообщаем об уходе', () => {
-      fakes.torrent.join('петя');
       fakes.nostr.join('петя');
-      fakes.torrent.leave('петя');
+      fakes.mqtt.join('петя');
+      fakes.nostr.leave('петя');
 
       expect(handlers.onPeerLeave).not.toHaveBeenCalled(); // после первого ухода — тишина
 
-      fakes.nostr.leave('петя');
+      fakes.mqtt.leave('петя');
 
       expect(handlers.onPeerLeave).toHaveBeenCalledTimes(1);
       expect(handlers.onPeerLeave).toHaveBeenCalledWith('петя');
@@ -323,18 +319,18 @@ describe('публичные каналы: адресная доставка', (
       const вторая = fakeTrack('video');
       const последний = () => handlers.onPeerStream.mock.calls.at(-1)[0];
 
-      fakes.torrent.join('петя');
-      fakes.torrent.stream(fakeStream(первая), 'петя');
+      fakes.nostr.join('петя');
+      fakes.nostr.stream(fakeStream(первая), 'петя');
       expect(handlers.onPeerStream).toHaveBeenCalledTimes(1);
       expect(последний().getTracks()).toEqual([первая]);
 
       handlers.onPeerStream.mockClear();
-      fakes.torrent.leave('петя');
+      fakes.nostr.leave('петя');
       expect(handlers.onPeerLeave).toHaveBeenCalledTimes(1);
       expect(handlers.onPeerLeave).toHaveBeenCalledWith('петя');
 
-      fakes.torrent.join('петя');
-      fakes.torrent.stream(fakeStream(вторая), 'петя');
+      fakes.nostr.join('петя');
+      fakes.nostr.stream(fakeStream(вторая), 'петя');
 
       expect(handlers.onPeerStream).toHaveBeenCalledTimes(1);
       // Старой дорожки быть не должно: ушедший унёс свой поток с собой.
@@ -347,39 +343,39 @@ describe('публичные каналы: адресная доставка', (
   // читал. Теперь он честно смотрит на readyState сокетов из getRelaySockets().
   describe('status(): какие каналы живы прямо сейчас', () => {
     it('семейство без единого открытого сокета живым не считается', () => {
-      const torrent = connection.status().find(c => c.family === 'torrent');
-      expect(torrent.alive).toBe(false);
-      expect(torrent.aliveCount).toBe(0);
+      const nostr = connection.status().find(c => c.family === 'nostr');
+      expect(nostr.alive).toBe(false);
+      expect(nostr.aliveCount).toBe(0);
     });
 
     it('семейство с открытым (readyState: OPEN) сокетом на своём адресе считается живым', () => {
-      const url = relayUrlsFor('torrent')[0];
-      fakes.torrent.sockets = {[url]: {readyState: 1}};
+      const url = relayUrlsFor('nostr')[0];
+      fakes.nostr.sockets = {[url]: {readyState: 1}};
 
-      const torrent = connection.status().find(c => c.family === 'torrent');
-      expect(torrent.alive).toBe(true);
-      expect(torrent.aliveCount).toBe(1);
+      const nostr = connection.status().find(c => c.family === 'nostr');
+      expect(nostr.alive).toBe(true);
+      expect(nostr.aliveCount).toBe(1);
 
-      // Соседние семейства эта правка не задевает.
-      expect(connection.status().find(c => c.family === 'nostr').alive).toBe(false);
+      // Соседнее семейство эта правка не задевает.
+      expect(connection.status().find(c => c.family === 'mqtt').alive).toBe(false);
     });
 
     it('сокет ещё подключается (readyState CONNECTING, не OPEN) — живым не считается', () => {
-      const url = relayUrlsFor('torrent')[0];
-      fakes.torrent.sockets = {[url]: {readyState: 0}};
+      const url = relayUrlsFor('nostr')[0];
+      fakes.nostr.sockets = {[url]: {readyState: 0}};
 
-      expect(connection.status().find(c => c.family === 'torrent').alive).toBe(false);
+      expect(connection.status().find(c => c.family === 'nostr').alive).toBe(false);
     });
 
     it('relays в ответе — это адреса именно этого семейства, из relayUrlsFor', () => {
-      const torrent = connection.status().find(c => c.family === 'torrent');
-      expect(torrent.relays).toEqual(relayUrlsFor('torrent'));
+      const nostr = connection.status().find(c => c.family === 'nostr');
+      expect(nostr.relays).toEqual(relayUrlsFor('nostr'));
     });
   });
 });
 
 // Переключатель семейств для диагностики: ?каналы=nostr или
-// ?каналы=torrent,mqtt в адресе страницы (см. main.js). Разбор строки и
+// ?каналы=nostr,mqtt в адресе страницы (см. main.js). Разбор строки и
 // отбор по имени — чистые функции, без браузера и без trystero.
 describe('parseFamilyNames', () => {
   it('одно имя', () => {
@@ -387,7 +383,7 @@ describe('parseFamilyNames', () => {
   });
 
   it('несколько имён через запятую, с пробелами', () => {
-    expect(parseFamilyNames('torrent, mqtt')).toEqual(['torrent', 'mqtt']);
+    expect(parseFamilyNames('nostr, mqtt')).toEqual(['nostr', 'mqtt']);
   });
 
   it('параметра нет вовсе — пустой список', () => {
@@ -402,7 +398,7 @@ describe('parseFamilyNames', () => {
 });
 
 describe('familiesFor', () => {
-  const ALL = [{family: 'torrent'}, {family: 'nostr'}, {family: 'mqtt'}];
+  const ALL = [{family: 'nostr'}, {family: 'mqtt'}];
 
   it('без имён — все семейства, как всегда', () => {
     expect(familiesFor([], ALL)).toBe(ALL);
@@ -413,7 +409,7 @@ describe('familiesFor', () => {
   });
 
   it('несколько имён — сохраняют исходный порядок списка семейств, а не порядок в параметре', () => {
-    expect(familiesFor(['mqtt', 'torrent'], ALL)).toEqual([{family: 'torrent'}, {family: 'mqtt'}]);
+    expect(familiesFor(['mqtt', 'nostr'], ALL)).toEqual([{family: 'nostr'}, {family: 'mqtt'}]);
   });
 
   it('неизвестное имя молча отсеивается — это инструмент для своего эксперимента, не форма с проверкой', () => {
@@ -454,13 +450,12 @@ describe('публичные каналы: жалобы на неудачу', ()
   const NO_PATH = 'could not connect to peer петя after exchanging SDP; configure TURN servers';
 
   it('жалоба доходит наверх опознанной', () => {
-    complain('torrent', NO_PATH);
+    complain('nostr', NO_PATH);
 
     expect(handlers.onTrouble).toHaveBeenCalledWith([{peerId: 'петя', kind: 'no-path'}]);
   });
 
-  it('одна и та же беда от трёх семейств — одно сообщение, а не три', () => {
-    complain('torrent', NO_PATH);
+  it('одна и та же беда от обоих семейств — одно сообщение, а не два', () => {
     complain('nostr', NO_PATH);
     complain('mqtt', NO_PATH);
 
@@ -468,16 +463,16 @@ describe('публичные каналы: жалобы на неудачу', ()
   });
 
   it('вошедший собеседник отменяет жалобу на себя', () => {
-    complain('torrent', NO_PATH);
+    complain('nostr', NO_PATH);
     handlers.onTrouble.mockClear();
 
-    fakes.nostr.join('петя');
+    fakes.mqtt.join('петя');
 
     expect(handlers.onTrouble).toHaveBeenCalledWith([]);
   });
 
   it('на уже вошедшего не жалуемся: у него всё получилось', () => {
-    fakes.torrent.join('петя');
+    fakes.nostr.join('петя');
     handlers.onTrouble.mockClear();
 
     complain('nostr', NO_PATH);
@@ -486,7 +481,7 @@ describe('публичные каналы: жалобы на неудачу', ()
   });
 
   it('разные собеседники — разные жалобы', () => {
-    complain('torrent', NO_PATH, 'петя');
+    complain('nostr', NO_PATH, 'петя');
     complain('nostr', 'handshake timed out after 15000ms', 'вася');
 
     expect(handlers.onTrouble).toHaveBeenLastCalledWith([
@@ -496,12 +491,12 @@ describe('публичные каналы: жалобы на неудачу', ()
   });
 
   it('ушедший собеседник уносит свою жалобу с собой', () => {
-    fakes.torrent.join('петя');
-    fakes.torrent.leave('петя');
-    complain('torrent', NO_PATH);
+    fakes.nostr.join('петя');
+    fakes.nostr.leave('петя');
+    complain('nostr', NO_PATH);
     handlers.onTrouble.mockClear();
 
-    fakes.torrent.join('петя');
+    fakes.nostr.join('петя');
 
     expect(handlers.onTrouble).toHaveBeenCalledWith([]);
     expect(connection.troubles()).toEqual([]);
@@ -526,11 +521,7 @@ describe('ретранслятор доходит до библиотеки', ()
   it('список ретрансляторов попадает в настройку каждого семейства', () => {
     const turnConfig = [{urls: 'turn:host:3478', username: 'u', credential: 'c'}];
 
-    expect(собрать(turnConfig).map(c => c.turnConfig)).toEqual([
-      turnConfig,
-      turnConfig,
-      turnConfig,
-    ]);
+    expect(собрать(turnConfig).map(c => c.turnConfig)).toEqual([turnConfig, turnConfig]);
   });
 
   it('без ретранслятора поля нет вовсе — библиотека берёт свои умолчания', () => {
@@ -567,35 +558,35 @@ describe('поток собеседника собирается у нас, а �
   const последний = () => handlers.onPeerStream.mock.calls.at(-1)[0];
 
   it('звук и картинка сходятся в один поток', () => {
-    fakes.torrent.join('петя');
+    fakes.nostr.join('петя');
     const звук = fakeTrack('audio');
     const видео = fakeTrack('video');
 
-    fakes.torrent.track(звук, {id: 'чужой-1'}, 'петя');
-    fakes.torrent.track(видео, {id: 'чужой-1'}, 'петя');
+    fakes.nostr.track(звук, {id: 'чужой-1'}, 'петя');
+    fakes.nostr.track(видео, {id: 'чужой-1'}, 'петя');
 
     expect(последний().getTracks()).toEqual([звук, видео]);
   });
 
   it('дорожка с ДРУГИМ объектом потока не стирает уже собранное', () => {
-    fakes.torrent.join('петя');
+    fakes.nostr.join('петя');
     const видео = fakeTrack('video');
     const звук = fakeTrack('audio');
 
-    fakes.torrent.track(видео, {id: 'чужой-1'}, 'петя');
+    fakes.nostr.track(видео, {id: 'чужой-1'}, 'петя');
     // Собеседник включил микрофон, пересогласование дало новый объект.
-    fakes.torrent.track(звук, {id: 'чужой-ДРУГОЙ'}, 'петя');
+    fakes.nostr.track(звук, {id: 'чужой-ДРУГОЙ'}, 'петя');
 
     expect(последний().getVideoTracks()).toEqual([видео]);
     expect(последний().getAudioTracks()).toEqual([звук]);
   });
 
   it('закончившаяся дорожка уходит из потока', () => {
-    fakes.torrent.join('петя');
+    fakes.nostr.join('петя');
     const звук = fakeTrack('audio');
     const видео = fakeTrack('video');
-    fakes.torrent.track(звук, {id: 'ч'}, 'петя');
-    fakes.torrent.track(видео, {id: 'ч'}, 'петя');
+    fakes.nostr.track(звук, {id: 'ч'}, 'петя');
+    fakes.nostr.track(видео, {id: 'ч'}, 'петя');
     handlers.onPeerStream.mockClear();
 
     звук.end();
@@ -604,13 +595,13 @@ describe('поток собеседника собирается у нас, а �
   });
 
   it('ушедший собеседник уносит свой поток', () => {
-    fakes.torrent.join('петя');
-    fakes.torrent.track(fakeTrack('audio'), {id: 'ч'}, 'петя');
-    fakes.torrent.leave('петя');
+    fakes.nostr.join('петя');
+    fakes.nostr.track(fakeTrack('audio'), {id: 'ч'}, 'петя');
+    fakes.nostr.leave('петя');
     handlers.onPeerStream.mockClear();
 
-    fakes.torrent.join('петя');
-    fakes.torrent.track(fakeTrack('video'), {id: 'ч2'}, 'петя');
+    fakes.nostr.join('петя');
+    fakes.nostr.track(fakeTrack('video'), {id: 'ч2'}, 'петя');
 
     expect(последний().getTracks().map(t => t.kind)).toEqual(['video']);
   });
@@ -633,7 +624,7 @@ describe('мёртвые дорожки не копятся', () => {
     }));
     handlers = {onPeerJoin: vi.fn(), onPeerStream: vi.fn(), onPeerLeave: vi.fn()};
     joinPublicChannels({roomId: 'r', password: 'p', handlers, families});
-    fakes.torrent.join('петя');
+    fakes.nostr.join('петя');
   });
 
   const последний = () => handlers.onPeerStream.mock.calls.at(-1)[0];
@@ -642,16 +633,16 @@ describe('мёртвые дорожки не копятся', () => {
     const прежний = fakeTrack('audio');
     const новый = fakeTrack('audio');
 
-    fakes.torrent.track(прежний, {}, 'петя');
-    fakes.torrent.track(новый, {}, 'петя');
+    fakes.nostr.track(прежний, {}, 'петя');
+    fakes.nostr.track(новый, {}, 'петя');
 
     expect(последний().getAudioTracks()).toEqual([новый]);
   });
 
   it('три круга включений оставляют ровно одну дорожку каждого вида', () => {
     for (let i = 0; i < 3; i++) {
-      fakes.torrent.track(fakeTrack('audio'), {}, 'петя');
-      fakes.torrent.track(fakeTrack('video'), {}, 'петя');
+      fakes.nostr.track(fakeTrack('audio'), {}, 'петя');
+      fakes.nostr.track(fakeTrack('video'), {}, 'петя');
     }
 
     expect(последний().getTracks().map(t => t.kind)).toEqual(['audio', 'video']);
@@ -659,7 +650,7 @@ describe('мёртвые дорожки не копятся', () => {
 
   it('заглохшая дорожка остаётся в потоке, но объявляется заново', () => {
     const видео = fakeTrack('video');
-    fakes.torrent.track(видео, {}, 'петя');
+    fakes.nostr.track(видео, {}, 'петя');
     handlers.onPeerStream.mockClear();
 
     видео.mute();

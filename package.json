@@ -19,8 +19,7 @@
   "private": "true",
   "dependencies": {
     "@trystero-p2p/mqtt": "0.25.4",
-    "@trystero-p2p/nostr": "0.25.4",
-    "@trystero-p2p/torrent": "0.25.4"
+    "@trystero-p2p/nostr": "0.25.4"
   },
   "devDependencies": {
     "jsdom": "30.0.1",

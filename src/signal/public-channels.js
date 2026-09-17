@@ -1,4 +1,3 @@
-import {joinRoom as joinTorrent, getRelaySockets as torrentSockets} from '@trystero-p2p/torrent';
 import {joinRoom as joinNostr, getRelaySockets as nostrSockets} from '@trystero-p2p/nostr';
 import {joinRoom as joinMqtt, getRelaySockets as mqttSockets} from '@trystero-p2p/mqtt';
 import {createPeerRegistry} from './dedupe.js';
@@ -12,8 +11,20 @@ export const APP_ID = 'sozvon';
 // глобального WebSocket может не быть вовсе).
 const SOCKET_OPEN = 1;
 
+// Торрент-трекеров здесь больше нет, и это осознанный размен.
+//
+// Библиотека знакомит через них так: представляется торрент-клиентом и
+// шлёт обычную анкету участника раздачи — info_hash, peer_id, numwant.
+// Файлов не качает ни байта, но выглядит именно как качалка. Отсюда две
+// беды сразу: такие адреса режут первыми там, где сеть зажата (работа,
+// гостиница), и на них ругается защитное ПО — у человека рабочий
+// антивирус кричал четыре минуты. Звонилка, из-за которой воет
+// антивирус, теряет доверие быстрее, чем выигрывает надёжность.
+//
+// Остаются два независимых семейства: этого хватает, чтобы пережить
+// смерть любого одного. За неделю проверок рукопожатие не ломалось ни
+// разу — ломался путь для звука, а не знакомство.
 const FAMILIES = [
-  {family: 'torrent', join: joinTorrent, getRelaySockets: torrentSockets},
   {family: 'nostr', join: joinNostr, getRelaySockets: nostrSockets},
   {family: 'mqtt', join: joinMqtt, getRelaySockets: mqttSockets},
 ];

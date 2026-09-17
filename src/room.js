@@ -67,6 +67,12 @@ export const createRoom = async ({
   let level = 0;
   let lastStep = -1;
 
+  // Кто говорит прямо сейчас — для подсветки плиток. Окно короче, чем у
+  // ступени качества: глаз ждёт, что контур погаснет вскоре после слова,
+  // а камере переключаться так часто нельзя.
+  const SPEAKING_WINDOW_MS = 700;
+  let speaking = [];
+
   const state = () => ({
     link: secretToLink(secret),
     quiet,
@@ -78,6 +84,7 @@ export const createRoom = async ({
     level,
     cam: cameraWanted,
     name: myName,
+    speaking,
     devices: media.chosen?.() ?? {microphone: null, camera: null},
     peers: [...peers.entries()].map(([peerId, stream]) => ({
       peerId,
@@ -87,6 +94,19 @@ export const createRoom = async ({
   });
 
   const announce = () => onChange(state());
+
+  // Уровни приходят от всех по нескольку раз в секунду, но объявлять надо
+  // только смену набора говорящих — иначе перерисовка станет постоянной.
+  const refreshSpeaking = () => {
+    const сейчас = tracker
+      .speaking(SPEAKING_WINDOW_MS)
+      .map(id => (id === SELF ? 'self' : id));
+    const тот_же =
+      сейчас.length === speaking.length && сейчас.every(id => speaking.includes(id));
+    if (тот_же) return;
+    speaking = сейчас;
+    announce();
+  };
 
   // Канал имён появится ниже, когда будет само подключение, — а нужен он
   // уже в обработчике onPeerJoin, который пишется выше него.
@@ -140,6 +160,10 @@ export const createRoom = async ({
   announce();
 
   const tracker = createSpeakingTracker();
+  // Набор говорящих гаснет сам по себе, без всяких событий: перестал
+  // человек говорить — сообщений больше не приходит. Значит пересчитывать
+  // надо по времени, а не по приходу.
+  const speakingTimer = setInterval(refreshSpeaking, 300);
   // Своя метка в счётчике говорящих. Намеренно не selfId из библиотеки:
   // там идентификатор для сети, а здесь — просто «это я».
   const SELF = 'я';
@@ -154,7 +178,12 @@ export const createRoom = async ({
   // сразу, с самого начала звонка.
   const levels = typeof connection.action === 'function' ? connection.action('level') : null;
   // Вторым аргументом приходит объект с полем peerId, а не сам идентификатор.
-  if (levels) levels.onMessage = (level, {peerId}) => tracker.report(peerId, level);
+  if (levels) {
+    levels.onMessage = (value, {peerId}) => {
+      tracker.report(peerId, value);
+      refreshSpeaking();
+    };
+  }
 
   namesChannel = typeof connection.action === 'function' ? connection.action('name') : null;
   if (namesChannel) {
@@ -200,6 +229,7 @@ export const createRoom = async ({
       lastStep = ступень;
       level = измерено;
       announce();
+      refreshSpeaking();
     };
     listener = setInterval(listen, 300);
   };
@@ -432,6 +462,7 @@ export const createRoom = async ({
 
     leave: async () => {
       clearInterval(timer);
+      clearInterval(speakingTimer);
       stopLevelMeter();
       media.stop();
       await connection.leave();

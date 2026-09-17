@@ -71,7 +71,7 @@ const askForSound = container => {
   };
 };
 
-const updateTile = (box, stream, label, isSelf, speaker) => {
+const updateTile = (box, stream, label, isSelf, speaker, speaking) => {
   const video = box.querySelector('video');
   // Присваиваем srcObject только когда поток и вправду сменился: лишнее
   // присваивание перезапускает проигрывание.
@@ -107,6 +107,7 @@ const updateTile = (box, stream, label, isSelf, speaker) => {
     void playThrough(video, speaker);
   }
 
+  box.classList.toggle('tile--speaking', Boolean(speaking));
   box.classList.toggle('tile--dark', !hasPicture(stream));
   box.dataset.initial = label.slice(0, 1);
 
@@ -175,7 +176,7 @@ export const renderCall = (container, state, actions) => {
   for (const {id, stream, label, isSelf} of wanted) {
     const box = было.get(id) ?? makeTile(id, isSelf);
     было.delete(id);
-    updateTile(box, stream, label, isSelf, state.speaker);
+    updateTile(box, stream, label, isSelf, state.speaker, state.speaking?.includes(id));
     // Вставляем ТОЛЬКО новые. append() для узла, который уже лежит здесь,
     // означает «вынуть и вставить заново» — а для <video> это перезапуск
     // проигрывания. Перерисовок теперь несколько в секунду (уровень звука),

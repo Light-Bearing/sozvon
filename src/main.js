@@ -73,7 +73,7 @@ for (const input of app.querySelectorAll('[data-name]')) {
 paintNameFields();
 
 // Отладочный переключатель семейств каналов: ?каналы=nostr или
-// ?каналы=torrent,mqtt ограничивает список для опыта «а если оставить
+// ?каналы=nostr,mqtt ограничивает список для опыта «а если оставить
 // одно семейство, связь встанет?» (см. README.md). Без параметра — все
 // три, как обычно.
 const families = familiesFor(
