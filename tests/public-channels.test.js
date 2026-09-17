@@ -76,7 +76,12 @@ const createFakeRoom = () => {
     addStream: (stream, options = {}) =>
       addStreamCalls.push({stream, target: options.target}),
     addTrack: (track, stream, options = {}) =>
-      addTrackCalls.push({track, stream, target: options.target}),
+      addTrackCalls.push({
+        track,
+        stream,
+        target: options.target,
+        ...(options.metadata ? {metadata: options.metadata} : {}),
+      }),
     removeTrack: (track, options = {}) => removeTrackCalls.push({track, target: options.target}),
     replaceTrack: () => {},
     makeAction: namespace => {
@@ -124,7 +129,8 @@ const createFakeRoom = () => {
       room.onPeerLeave?.(peerId);
     },
     stream: (stream, peerId) => room.onPeerStream?.(stream, peerId),
-    track: (track, stream, peerId) => room.onPeerTrack?.(track, stream, peerId),
+    track: (track, stream, peerId, metadata) =>
+      room.onPeerTrack?.(track, stream, peerId, metadata),
   };
 };
 
@@ -657,5 +663,159 @@ describe('мёртвые дорожки не копятся', () => {
 
     expect(handlers.onPeerStream).toHaveBeenCalledTimes(1);
     expect(latest().getVideoTracks()).toEqual([video]);
+  });
+});
+
+// Показ экрана больше не отменяет камеру: лицо и экран идут вместе. Чтобы
+// их различить на приёме, дорожка экрана помечается — библиотека умеет
+// возить пометку рядом с дорожкой (onPeerTrack отдаёт её четвёртым
+// доводом). Без пометки они слились бы в один поток, и правило «одна
+// картинка на человека» выкинуло бы одну из них.
+describe('экран и камера — разные потоки', () => {
+  let fakes;
+  let handlers;
+  let connection;
+
+  beforeEach(() => {
+    fakes = Object.fromEntries(FAMILY_NAMES.map(name => [name, createFakeRoom()]));
+    const families = FAMILY_NAMES.map(family => ({
+      family,
+      join: () => fakes[family].room,
+      getRelaySockets: () => fakes[family].sockets,
+    }));
+    handlers = {onPeerJoin: vi.fn(), onPeerStream: vi.fn(), onPeerLeave: vi.fn()};
+    connection = joinPublicChannels({roomId: 'r', password: 'p', handlers, families});
+    fakes.nostr.join('петя');
+  });
+
+  const пришло = role =>
+    handlers.onPeerStream.mock.calls.filter(c => (c[2] ?? 'camera') === role).at(-1)?.[0];
+
+  it('лицо и экран приходят по отдельности, каждое со своей меткой', () => {
+    const лицо = fakeTrack('video');
+    const экран = fakeTrack('video');
+
+    fakes.nostr.track(лицо, {}, 'петя');
+    fakes.nostr.track(экран, {}, 'петя', {role: 'screen'});
+
+    expect(пришло('camera').getVideoTracks()).toEqual([лицо]);
+    expect(пришло('screen').getVideoTracks()).toEqual([экран]);
+  });
+
+  it('звук идёт к лицу, а не к экрану', () => {
+    const звук = fakeTrack('audio');
+    const экран = fakeTrack('video');
+
+    fakes.nostr.track(экран, {}, 'петя', {role: 'screen'});
+    fakes.nostr.track(звук, {}, 'петя');
+
+    expect(пришло('camera').getAudioTracks()).toEqual([звук]);
+    expect(пришло('screen').getAudioTracks()).toEqual([]);
+  });
+
+  it('правило «одна дорожка каждого вида» держится внутри каждой роли', () => {
+    const первый = fakeTrack('video');
+    const второй = fakeTrack('video');
+
+    fakes.nostr.track(первый, {}, 'петя', {role: 'screen'});
+    fakes.nostr.track(второй, {}, 'петя', {role: 'screen'});
+
+    expect(пришло('screen').getVideoTracks()).toEqual([второй]);
+  });
+
+  it('метка уходит собеседнику вместе с дорожкой', () => {
+    const экран = {id: 'экран'};
+
+    connection.addTrack(экран, {id: 'поток'}, {role: 'screen'});
+
+    expect(fakes.nostr.addTrackCalls.at(-1)).toEqual({
+      track: экран,
+      stream: {id: 'поток'},
+      target: 'петя',
+      metadata: {role: 'screen'},
+    });
+  });
+
+  it('ушедший уносит оба своих потока', () => {
+    fakes.nostr.track(fakeTrack('video'), {}, 'петя');
+    fakes.nostr.track(fakeTrack('video'), {}, 'петя', {role: 'screen'});
+    fakes.nostr.leave('петя');
+    handlers.onPeerStream.mockClear();
+
+    fakes.nostr.join('петя');
+    fakes.nostr.track(fakeTrack('video'), {}, 'петя', {role: 'screen'});
+
+    expect(пришло('screen').getVideoTracks()).toHaveLength(1);
+    expect(пришло('camera')).toBeUndefined();
+  });
+});
+
+// Жалоба остаётся на экране, пока беда длится. Но библиотека пробует
+// соединиться заново под НОВЫМ именем участника, и жалоба на старое имя
+// висела вечно — даже когда разговор уже шёл и все всех видели. Человек
+// смотрел на работающий звонок и читал «прямого пути нет».
+describe('жалобы не висят вечно', () => {
+  let fakes;
+  let handlers;
+  let connection;
+  let clock;
+
+  const NO_PATH = 'could not connect to peer X after exchanging SDP';
+
+  beforeEach(() => {
+    clock = 1_000_000;
+    fakes = Object.fromEntries(FAMILY_NAMES.map(name => [name, createFakeRoom()]));
+    const families = FAMILY_NAMES.map(family => ({
+      family,
+      join: (_c, _r, callbacks) => {
+        fakes[family].callbacks = callbacks;
+        return fakes[family].room;
+      },
+      getRelaySockets: () => fakes[family].sockets,
+    }));
+    handlers = {onPeerJoin: vi.fn(), onTrouble: vi.fn()};
+    connection = joinPublicChannels({
+      roomId: 'r',
+      password: 'p',
+      handlers,
+      families,
+      now: () => clock,
+    });
+  });
+
+  const жалоба = peerId =>
+    fakes.nostr.callbacks.onJoinError({peerId, error: NO_PATH, appId: 'sozvon', roomId: 'r'});
+
+  it('свежая жалоба остаётся', () => {
+    жалоба('петя');
+    clock += 10_000;
+
+    expect(connection.troubles()).toHaveLength(1);
+  });
+
+  it('протухшая уходит сама', () => {
+    жалоба('петя');
+    clock += 60_000;
+
+    expect(connection.troubles()).toEqual([]);
+  });
+
+  it('пока беда длится, жалоба свежая: библиотека сообщает о ней заново', () => {
+    жалоба('петя');
+    clock += 30_000;
+    жалоба('петя');
+    clock += 30_000;
+
+    expect(connection.troubles()).toHaveLength(1);
+  });
+
+  it('протухание объявляется наверх, чтобы экран перестал врать', () => {
+    жалоба('петя');
+    handlers.onTrouble.mockClear();
+    clock += 60_000;
+
+    connection.troubles();
+
+    expect(handlers.onTrouble).toHaveBeenCalledWith([]);
   });
 });

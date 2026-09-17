@@ -759,7 +759,7 @@ describe('имена участников', () => {
     connection.channel('name').onMessage('Сонная Выдра', {peerId: 'петя'});
 
     expect(room.state().peers).toEqual([
-      {peerId: 'петя', stream: null, name: 'Сонная Выдра'},
+      {peerId: 'петя', stream: null, screen: null, name: 'Сонная Выдра'},
     ]);
   });
 
@@ -845,25 +845,49 @@ describe('показ экрана', () => {
     expect(room.state().canShareScreen).toBe(false);
   });
 
-  it('картинка экрана заменяет картинку камеры на соединениях', async () => {
-    const swap = {old: {id: 'камера'}, next: {id: 'экран'}};
-    const {room, connection} = await openRoom({media: mediaWithScreen(swap)});
-
-    await room.setScreen(true);
-
-    expect(connection.replaceTrack).toHaveBeenCalledWith(swap.old, swap.next);
-    expect(room.state().screen).toBe(true);
-  });
-
-  it('с выключенной камерой дорожка экрана просто досылается', async () => {
-    const swap = {old: null, next: {id: 'экран'}};
-    const {room, connection} = await openRoom({media: mediaWithScreen(swap)});
+  // Лицо и экран идут вместе. Пометка обязательна: по ней собеседник
+  // отличит одно от другого и покажет двумя плитками.
+  it('дорожка экрана уходит помеченной, камеру не трогаем', async () => {
+    const экран = {id: 'экран'};
+    const {room, connection} = await openRoom({media: mediaWithScreen({added: экран})});
 
     await room.setScreen(true);
 
     expect(connection.replaceTrack).not.toHaveBeenCalled();
-    // Второй довод — общий поток; в поддельном media его нет, и это не важно.
-    expect(connection.addTrack.mock.calls[0][0]).toBe(swap.next);
+    const [дорожка, , метка] = connection.addTrack.mock.calls[0];
+    expect(дорожка).toBe(экран);
+    expect(метка).toEqual({role: 'screen'});
+    expect(room.state().screen).toBe(true);
+  });
+
+  it('прекращение показа снимает только дорожку экрана', async () => {
+    const экран = {id: 'экран'};
+    const media = mediaWithScreen({added: экран});
+    const {room, connection} = await openRoom({media});
+    await room.setScreen(true);
+    media.useScreen.mockResolvedValue({removed: экран});
+
+    await room.setScreen(false);
+
+    expect(connection.removeTrack).toHaveBeenCalledWith(экран);
+    expect(room.state().screen).toBe(false);
+  });
+
+  it('экран собеседника приходит отдельным потоком, а не вместо лица', async () => {
+    const {room, connection} = await openRoom({media: mediaWithScreen(null)});
+    connection.handlers.onPeerJoin('петя');
+    const лицо = {id: 'лицо'};
+    const экран = {id: 'экран'};
+
+    connection.handlers.onPeerStream(лицо, 'петя', 'camera');
+    connection.handlers.onPeerStream(экран, 'петя', 'screen');
+
+    expect(room.state().peers[0]).toEqual({
+      peerId: 'петя',
+      stream: лицо,
+      screen: экран,
+      name: null,
+    });
   });
 
   it('человек передумал в окне выбора — это не поломка, показ просто не начался', async () => {

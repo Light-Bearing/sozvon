@@ -110,7 +110,10 @@ const updateTile = (box, stream, label, isSelf, speaker, speaking, mirror) => {
 
   // Зеркалим только своё и только по просьбе человека. Чужих — никогда:
   // там зеркало показало бы людей не такими, какие они есть.
-  box.classList.toggle('tile--mirror', isSelf && Boolean(mirror));
+  // Экран не зеркалим никогда, даже свой: любой текст на нём перевернулся
+  // бы, а смысл показа как раз в том, чтобы его читали.
+  const isScreen = box.dataset.peer.endsWith('|screen');
+  box.classList.toggle('tile--mirror', isSelf && !isScreen && Boolean(mirror));
   box.classList.toggle('tile--speaking', Boolean(speaking));
   box.classList.toggle('tile--dark', !hasPicture(stream));
   box.dataset.initial = label.slice(0, 1);
@@ -166,14 +169,22 @@ export const renderCall = (container, state, actions) => {
 
   // На своей плитке — своё имя, а не «Вы»: это ровно то, что видят
   // остальные, и другого места проверить его нет.
+  // Экран — отдельная плитка рядом с лицом, а не вместо него: показывать
+  // можно и то и другое разом. Подпись сразу говорит, чей это экран.
   const wanted = [
     {id: 'self', stream: state.self, label: state.name ?? 'Вы', isSelf: true},
-    ...state.peers.map(({peerId, stream, name}, i) => ({
-      id: peerId,
-      stream,
-      label: nameFor(name, i, state.peers.length),
-      isSelf: false,
-    })),
+    ...(state.selfScreen
+      ? [{id: 'self|screen', stream: state.selfScreen, label: 'Ваш экран', isSelf: true}]
+      : []),
+    ...state.peers.flatMap(({peerId, stream, screen, name}, i) => {
+      const кто = nameFor(name, i, state.peers.length);
+      return [
+        {id: peerId, stream, label: кто, isSelf: false},
+        ...(screen
+          ? [{id: `${peerId}|screen`, stream: screen, label: `Экран · ${кто}`, isSelf: false}]
+          : []),
+      ];
+    }),
   ];
 
   const tiles = container.querySelector('#tiles');

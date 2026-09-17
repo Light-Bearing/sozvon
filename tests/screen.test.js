@@ -35,10 +35,10 @@ describe('демонстрация экрана', () => {
     const media = createMedia({getUserMedia: vi.fn(), getDisplayMedia: undefined});
 
     expect(media.canShareScreen()).toBe(false);
-    expect(await media.captureScreen()).toBe(null);
+    expect(await media.useScreen(true, FULL)).toBe(null);
   });
 
-  it('захваченная картинка экрана попадает в общий поток', async () => {
+  it('картинка экрана НЕ попадает в общий поток', async () => {
     const экран = fakeTrack('video', 'экран');
     const media = createMedia({
       getUserMedia: vi.fn().mockResolvedValue(fakeStream(fakeTrack('audio'))),
@@ -46,17 +46,16 @@ describe('демонстрация экрана', () => {
     });
     await media.captureMicrophone(FULL);
 
-    const track = await media.captureScreen();
+    const итог = await media.useScreen(true, FULL);
 
-    expect(track).toBe(экран);
-    expect(media.current().getVideoTracks()).toEqual([экран]);
+    expect(итог.added).toBe(экран);
+    // Общий поток остаётся при своём: там лицо и звук, экран отдельно.
+    expect(media.current().getVideoTracks()).toEqual([]);
   });
 
-  // Правило «одна картинка на человека» держит и приём (см. onPeerTrack в
-  // public-channels.js): показывать сразу и камеру, и экран мы не умеем, а
-  // молча слать обе дорожки значило бы, что у собеседника пропадёт одна из
-  // них без объяснений.
-  it('экран ЗАМЕНЯЕТ камеру, а не добавляется к ней', async () => {
+  // Лицо и экран идут ВМЕСТЕ, каждое своей дорожкой. Различает их пометка
+  // на дорожке (см. onPeerTrack в src/signal/public-channels.js).
+  it('экран добавляется к камере, а не заменяет её', async () => {
     const камера = fakeTrack('video', 'камера');
     const экран = fakeTrack('video', 'экран');
     const media = createMedia({
@@ -65,32 +64,66 @@ describe('демонстрация экрана', () => {
     });
     await media.captureCamera(FULL);
 
-    const swap = await media.useScreen(true, FULL);
+    const итог = await media.useScreen(true, FULL);
 
-    expect(swap).toEqual({old: камера, next: экран});
-    expect(камера.stop).toHaveBeenCalled();
-    expect(media.current().getVideoTracks()).toEqual([экран]);
+    expect(итог.added).toBe(экран);
+    expect(камера.stop).not.toHaveBeenCalled();
+    // Экран в СВОЁМ потоке: общий остаётся при своём лице.
+    expect(media.current().getVideoTracks()).toEqual([камера]);
+    expect(media.screen().getVideoTracks()).toEqual([экран]);
   });
 
-  it('выключение экрана возвращает камеру, если она была нужна', async () => {
+  it('выключение экрана убирает только его, камера остаётся', async () => {
     const камера = fakeTrack('video', 'камера');
-    const другая = fakeTrack('video', 'камера снова');
     const экран = fakeTrack('video', 'экран');
-    const getUserMedia = vi
-      .fn()
-      .mockResolvedValueOnce(fakeStream(камера))
-      .mockResolvedValueOnce(fakeStream(другая));
     const media = createMedia({
-      getUserMedia,
+      getUserMedia: vi.fn().mockResolvedValue(fakeStream(камера)),
       getDisplayMedia: vi.fn().mockResolvedValue(fakeStream(экран)),
     });
     await media.captureCamera(FULL);
     await media.useScreen(true, FULL);
 
-    const swap = await media.useScreen(false, FULL);
+    const итог = await media.useScreen(false, FULL);
 
-    expect(swap).toEqual({old: экран, next: другая});
+    expect(итог).toEqual({removed: экран});
     expect(экран.stop).toHaveBeenCalled();
+    expect(media.current().getVideoTracks()).toEqual([камера]);
+    expect(media.screen()).toBe(null);
+  });
+
+  // Выключатель камеры, лестница качества и освобождение устройства не
+  // должны трогать экран: это разные картинки.
+  it('выключение камеры не гасит показ экрана', async () => {
+    const камера = fakeTrack('video', 'камера');
+    const экран = fakeTrack('video', 'экран');
+    const media = createMedia({
+      getUserMedia: vi.fn().mockResolvedValue(fakeStream(камера)),
+      getDisplayMedia: vi.fn().mockResolvedValue(fakeStream(экран)),
+    });
+    await media.captureCamera(FULL);
+    await media.useScreen(true, FULL);
+
+    media.setCamera(false);
+
+    expect(камера.enabled).toBe(false);
+    expect(экран.enabled).toBe(true);
+  });
+
+  it('освобождение камеры не останавливает экран', async () => {
+    const камера = fakeTrack('video', 'камера');
+    const экран = fakeTrack('video', 'экран');
+    const media = createMedia({
+      getUserMedia: vi.fn().mockResolvedValue(fakeStream(камера)),
+      getDisplayMedia: vi.fn().mockResolvedValue(fakeStream(экран)),
+    });
+    await media.captureCamera(FULL);
+    await media.useScreen(true, FULL);
+
+    const снятые = media.releaseCamera();
+
+    expect(снятые).toEqual([камера]);
+    expect(экран.stop).not.toHaveBeenCalled();
+    expect(media.screen().getVideoTracks()).toEqual([экран]);
   });
 
   it('человек нажал «прекратить показ» в самом браузере — узнаём об этом', async () => {
@@ -101,7 +134,7 @@ describe('демонстрация экрана', () => {
     });
     const stopped = vi.fn();
 
-    await media.captureScreen(stopped);
+    await media.useScreen(true, FULL, stopped);
     экран.end();
 
     expect(stopped).toHaveBeenCalledTimes(1);

@@ -491,3 +491,59 @@ describe('зеркало по выбору человека', () => {
     expect(el.querySelector('#backdrop').classList.contains('backdrop--mirror')).toBe(false);
   });
 });
+
+// Показывать можно и лицо, и экран разом: это две плитки, а не одна
+// вместо другой.
+describe('экран — отдельная плитка', () => {
+  const поток = () => ({getVideoTracks: () => [], getAudioTracks: () => [], getTracks: () => []});
+
+  it('без показа лишних плиток нет', () => {
+    const el = root();
+
+    renderCall(el, baseState({peers: [{peerId: 'петя', stream: null, name: null}]}), fakeActions());
+
+    expect(el.querySelectorAll('#tiles .tile')).toHaveLength(2);
+    expect(el.querySelector('[data-peer="петя|screen"]')).toBe(null);
+  });
+
+  it('свой экран появляется рядом со своим лицом', () => {
+    const el = root();
+
+    renderCall(el, baseState({selfScreen: поток()}), fakeActions());
+
+    expect(el.querySelector('[data-peer="self|screen"]')).not.toBe(null);
+    expect(el.querySelector('[data-peer="self|screen"] .tile-name').textContent).toBe('Ваш экран');
+  });
+
+  it('экран собеседника подписан его именем', () => {
+    const el = root();
+    const peers = [{peerId: 'петя', stream: null, screen: поток(), name: 'Пётр'}];
+
+    renderCall(el, baseState({peers}), fakeActions());
+
+    expect(el.querySelector('[data-peer="петя|screen"] .tile-name').textContent).toBe(
+      'Экран · Пётр',
+    );
+  });
+
+  it('экран не зеркалим даже свой — текст на нём перевернулся бы', () => {
+    const el = root();
+
+    renderCall(el, baseState({selfScreen: поток(), mirror: true}), fakeActions());
+
+    expect(el.querySelector('[data-peer="self"]').classList.contains('tile--mirror')).toBe(true);
+    expect(el.querySelector('[data-peer="self|screen"]').classList.contains('tile--mirror')).toBe(
+      false,
+    );
+  });
+
+  it('показ прекратили — плитка уходит, лицо остаётся', () => {
+    const el = root();
+    renderCall(el, baseState({selfScreen: поток()}), fakeActions());
+
+    renderCall(el, baseState({selfScreen: null}), fakeActions());
+
+    expect(el.querySelector('[data-peer="self|screen"]')).toBe(null);
+    expect(el.querySelector('[data-peer="self"]')).not.toBe(null);
+  });
+});

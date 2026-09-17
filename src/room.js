@@ -24,6 +24,9 @@ export const createRoom = async ({
   turnConfig,
 }) => {
   const peers = new Map();
+  // Экраны собеседников — отдельно от лиц: это две разные картинки, и
+  // показываются они двумя плитками.
+  const screens = new Map();
   // Своё имя и имена собеседников. Своё — то, что дали снаружи (main.js
   // помнит его между звонками), либо смешное, придуманное на месте.
   let myName = trimName(name) ?? makeName();
@@ -98,8 +101,11 @@ export const createRoom = async ({
     peers: [...peers.entries()].map(([peerId, stream]) => ({
       peerId,
       stream,
+      screen: screens.get(peerId) ?? null,
       name: names.get(peerId) ?? null,
     })),
+    // Свой экран — чтобы человек видел, что именно показывает.
+    selfScreen: media.screen?.() ?? null,
   });
 
   const announce = () => onChange(state());
@@ -159,11 +165,13 @@ export const createRoom = async ({
         },
         onPeerLeave: peerId => {
           peers.delete(peerId);
+          screens.delete(peerId);
           names.delete(peerId);
           announce();
         },
-        onPeerStream: (peerStream, peerId) => {
-          peers.set(peerId, peerStream);
+        onPeerStream: (peerStream, peerId, role = 'camera') => {
+          if (role === 'screen') screens.set(peerId, peerStream);
+          else peers.set(peerId, peerStream);
           announce();
         },
       },
@@ -425,6 +433,9 @@ export const createRoom = async ({
         // src/stats.js) — досчитывать через пропуск не придётся.
       }
     }
+    // Заодно подметаем протухшие жалобы: иначе «прямого пути нет» висело
+    // бы поверх работающего разговора.
+    connection.troubles?.();
     flow = flowTracker.update(peerReports) ?? flow;
     const {loss, queueSeconds} = stats.summarize(peerReports);
     await applyStep(ladder.update({peerCount: peers.size + 1, loss, queueSeconds}));
@@ -455,12 +466,16 @@ export const createRoom = async ({
       if (screenSwitching) return;
       screenSwitching = true;
       try {
-        const swap = await media.useScreen(on, step, () => {
+        const change = await media.useScreen(on, step, () => {
           if (screenWanted) void room.setScreen(false);
         });
         screenWanted = on;
-        if (swap?.old) connection.replaceTrack(swap.old, swap.next);
-        else if (swap?.next) connection.addTrack(swap.next, media.current());
+        // Пометка обязательна: по ней собеседник отличит экран от лица и
+        // покажет их двумя плитками, а не выбросит одну из картинок.
+        if (change?.added) {
+          connection.addTrack(change.added, change.stream, {role: 'screen'});
+        }
+        if (change?.removed) connection.removeTrack(change.removed);
       } catch {
         // Человек передумал в окне выбора окна — это не поломка.
         screenWanted = false;

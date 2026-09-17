@@ -53,12 +53,20 @@ export const familiesFor = (names, all = FAMILIES) =>
 // turnConfig — список ретрансляторов для льда. Библиотека дописывает его к
 // своим STUN-серверам, а не заменяет их: прямой путь по-прежнему пробуется
 // первым, ретранслятор включается только когда прямого нет.
+// Сколько жалоба считается свежей. Пока беда длится, библиотека сообщает
+// о ней заново на каждой попытке, и отсчёт начинается сначала. А вот
+// жалоба на участника, которого больше никто не ищет, должна уйти сама:
+// библиотека пробует соединиться заново под НОВЫМ именем, и старая жалоба
+// иначе висела бы вечно — поверх уже работающего разговора.
+export const TROUBLE_FRESH_MS = 45_000;
+
 export const joinPublicChannels = ({
   roomId,
   password,
   handlers,
   families = FAMILIES,
   turnConfig,
+  now = () => Date.now(),
 }) => {
   const registry = createPeerRegistry();
 
@@ -73,15 +81,33 @@ export const joinPublicChannels = ({
   // другим объектом потока. Отдай мы его как есть — плитка мгновенно
   // потеряла бы всё, чего в нём нет: включил звук, пропала картинка.
   // Свой поток этого не умеет: в него только добавляют и из него убирают.
+  //
+  // Потоков у собеседника может быть два: лицо и экран. Их различает
+  // пометка, которую отправитель вешает на дорожку, — библиотека возит её
+  // рядом с дорожкой и отдаёт четвёртым доводом onPeerTrack. Без пометки
+  // они слились бы в один поток, и правило «одна дорожка каждого вида»
+  // выкинуло бы одну из картинок.
   const peerStreams = new Map();
 
-  const streamFor = peerId => {
-    if (!peerStreams.has(peerId)) peerStreams.set(peerId, new MediaStream());
-    return peerStreams.get(peerId);
+  const keyFor = (peerId, role) => `${peerId}\u0000${role}`;
+
+  const roleOf = metadata => (metadata?.role === 'screen' ? 'screen' : 'camera');
+
+  const streamFor = (peerId, role) => {
+    const key = keyFor(peerId, role);
+    if (!peerStreams.has(key)) peerStreams.set(key, new MediaStream());
+    return peerStreams.get(key);
   };
 
-  const takeTrack = (track, peerId) => {
-    const stream = streamFor(peerId);
+  const forgetPeer = peerId => {
+    for (const key of [...peerStreams.keys()]) {
+      if (key.startsWith(`${peerId}\u0000`)) peerStreams.delete(key);
+    }
+  };
+
+  const takeTrack = (track, peerId, role = 'camera') => {
+    const key = keyFor(peerId, role);
+    const stream = streamFor(peerId, role);
 
     // У собеседника в разговоре не бывает двух микрофонов или двух камер:
     // новая дорожка того же вида ЗАМЕНЯЕТ прежнюю. Без этого правила после
@@ -97,15 +123,15 @@ export const joinPublicChannels = ({
     // Перерисовываем, чтобы плитка честно потемнела, а кончившуюся дорожку
     // убираем совсем.
     const refresh = () => {
-      if (peerStreams.get(peerId) !== stream) return;
+      if (peerStreams.get(key) !== stream) return;
       if (track.readyState === 'ended') stream.removeTrack(track);
-      handlers.onPeerStream?.(stream, peerId);
+      handlers.onPeerStream?.(stream, peerId, role);
     };
     for (const event of ['ended', 'mute', 'unmute']) {
       track.addEventListener(event, refresh);
     }
 
-    handlers.onPeerStream?.(stream, peerId);
+    handlers.onPeerStream?.(stream, peerId, role);
   };
 
   // Собеседники, которых канал нашёл, а соединиться с ними не вышло.
@@ -115,8 +141,21 @@ export const joinPublicChannels = ({
   // производил вообще никаких событий и экран честно ничего не знал.
   const troubles = new Map();
 
-  const tellTroubles = () =>
-    handlers.onTrouble?.([...troubles].map(([peerId, kind]) => ({peerId, kind})));
+  // Выбрасывает протухшие и говорит, менялось ли что-нибудь.
+  const dropStale = () => {
+    const edge = now() - TROUBLE_FRESH_MS;
+    let changed = false;
+    for (const [peerId, {at}] of troubles) {
+      if (at > edge) continue;
+      troubles.delete(peerId);
+      changed = true;
+    }
+    return changed;
+  };
+
+  const listTroubles = () => [...troubles].map(([peerId, {kind}]) => ({peerId, kind}));
+
+  const tellTroubles = () => handlers.onTrouble?.(listTroubles());
 
   // Поток, который раздаёт приложение. Храним, чтобы отправить его и
   // новым участникам (при claim), и участнику, у которого сменился
@@ -138,10 +177,12 @@ export const joinPublicChannels = ({
           // На вошедшего жаловаться не на что: у него как раз получилось.
           if (registry.ownerOf(peerId)) return;
           const kind = troubleFrom(error);
-          // Ту же беду обычно приносят все три семейства подряд — наверх
-          // сообщаем только о смене, а не о каждом повторе.
-          if (troubles.get(peerId) === kind) return;
-          troubles.set(peerId, kind);
+          const known = troubles.get(peerId);
+          // Ту же беду обычно приносят оба семейства подряд — наверх
+          // сообщаем только о смене, а не о каждом повторе. Но отметку
+          // свежести обновляем всегда: пока беда длится, жалоба живая.
+          troubles.set(peerId, {kind, at: now()});
+          if (known?.kind === kind) return;
           tellTroubles();
         },
       },
@@ -173,7 +214,7 @@ export const joinPublicChannels = ({
       }
 
       streamedPeers.delete(peerId);
-      peerStreams.delete(peerId);
+      forgetPeer(peerId);
       handlers.onPeerLeave?.(peerId);
     };
     room.onPeerStream = (stream, peerId) => {
@@ -193,9 +234,9 @@ export const joinPublicChannels = ({
     // по отдельности и в один и тот же поток, и если смолчать на второй,
     // видео не появится следом за звуком. Повторное объявление того же
     // потока ничего не стоит — комната просто перерисует плитку.
-    room.onPeerTrack = (track, _stream, peerId) => {
+    room.onPeerTrack = (track, _stream, peerId, metadata) => {
       streamedPeers.add(peerId);
-      takeTrack(track, peerId);
+      takeTrack(track, peerId, roleOf(metadata));
     };
 
     return {family, relays, room, getRelaySockets};
@@ -228,10 +269,16 @@ export const joinPublicChannels = ({
     // объект) — поэтому участнику, подключившемуся позже, ничего досылать
     // не нужно: onPeerJoin() ниже сам отдаст localStream целиком, уже со
     // всеми дорожками, какие в нём на тот момент есть.
-    addTrack: (track, stream) => {
-      localStream = stream;
+    // metadata помечает дорожку — сейчас этим отличается экран от лица.
+    // Дорожку экрана в localStream не запоминаем: localStream досылается
+    // новым участникам целиком, и пометка при этом потерялась бы.
+    addTrack: (track, stream, metadata) => {
+      if (!metadata) localStream = stream;
       for (const peerId of registry.peers()) {
-        roomOf(registry.ownerOf(peerId)).addTrack(track, stream, {target: peerId});
+        roomOf(registry.ownerOf(peerId)).addTrack(track, stream, {
+          target: peerId,
+          ...(metadata ? {metadata} : {}),
+        });
       }
     },
     // Снимает дорожку с уже установленных соединений (человек выключил
@@ -292,7 +339,10 @@ export const joinPublicChannels = ({
         const aliveCount = relays.filter(url => sockets[url]?.readyState === SOCKET_OPEN).length;
         return {family, relays, aliveCount, alive: aliveCount > 0};
       }),
-    troubles: () => [...troubles].map(([peerId, kind]) => ({peerId, kind})),
+    troubles: () => {
+      if (dropStale()) tellTroubles();
+      return listTroubles();
+    },
     leave: () => Promise.all(everyRoom(room => room.leave())),
   };
 };

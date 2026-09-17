@@ -27,6 +27,11 @@ export const createMedia = ({
 } = {}) => {
   let stream = null;
 
+  // Экран живёт в СВОЁМ потоке, а не в общем. Иначе своя плитка показывала
+  // бы первую попавшуюся видеодорожку — то есть иногда экран вместо лица, —
+  // а выключатель камеры и лестница качества трогали бы обе картинки разом.
+  let screenStream = null;
+
   // Что человек выбрал в настройках. Помним даже когда захвата ещё нет:
   // выбор, сделанный до включения микрофона, должен дожить до включения.
   const preferred = {audio: null, video: null};
@@ -72,55 +77,30 @@ export const createMedia = ({
     // onStopped зовётся, когда человек прекращает показ самим браузером —
     // кнопкой в его полоске, а не нашей. Без этого приложение осталось бы
     // уверено, что экран ещё идёт.
-    captureScreen: async onStopped => {
-      if (typeof getDisplayMedia !== 'function') return null;
-      const captured = await getDisplayMedia({
-        video: {frameRate: {ideal: 15}},
-        audio: false,
-      });
-      const [track] = captured.getVideoTracks();
-      if (!track) return null;
-      if (onStopped) track.addEventListener('ended', onStopped);
-      if (stream) stream.addTrack(track);
-      else stream = captured;
-      return track;
-    },
-
-    // Включает или выключает показ экрана, отдавая пару дорожек для замены
-    // на соединениях — тем же порядком, что и смена устройства.
-    useScreen: async (on, step, onStopped) => {
-      const [old] = stream?.getVideoTracks() ?? [];
+    // Включает или выключает показ экрана. Камеру НЕ трогает: лицо и экран
+    // идут вместе, каждое своей дорожкой со своей пометкой. Отдаёт дорожку,
+    // которую надо разослать (added) или снять (removed).
+    useScreen: async (on, _step, onStopped) => {
       if (on) {
         if (typeof getDisplayMedia !== 'function') return null;
+        if (screenStream) return null; // уже показываем
         const captured = await getDisplayMedia({video: {frameRate: {ideal: 15}}, audio: false});
         const [next] = captured.getVideoTracks();
         if (!next) return null;
         if (onStopped) next.addEventListener('ended', onStopped);
-        if (old) {
-          old.stop();
-          stream.removeTrack(old);
-        }
-        if (stream) stream.addTrack(next);
-        else stream = captured;
-        // old может быть null — камера была выключена. Дорожку всё равно
-        // отдаём: комнате её ещё рассылать.
-        return {old: old ?? null, next};
+        screenStream = captured;
+        return {added: next, stream: captured};
       }
 
-      // Показ прекращён. Камеру возвращаем, только если экран и правда шёл.
-      if (!old) return null;
-      old.stop();
-      stream.removeTrack(old);
-      const video = constraintsFor(step).video;
-      if (!video) return null;
-      const captured = await getUserMedia({
-        audio: false,
-        video: withDevice(video, preferred.video),
-      });
-      const [next] = captured.getVideoTracks();
-      if (next) stream.addTrack(next);
-      return next ? {old, next} : null;
+      if (!screenStream) return null;
+      const [removed] = screenStream.getVideoTracks();
+      screenStream.getTracks().forEach(t => t.stop());
+      screenStream = null;
+      return removed ? {removed} : null;
     },
+
+    // Поток экрана — отдельный: плитка экрана показывает только его.
+    screen: () => screenStream,
 
     useMicrophone: (deviceId, step) =>
       swapTrack('audio', deviceId, constraintsFor(step).audio),
@@ -219,6 +199,8 @@ export const createMedia = ({
     stop: () => {
       stream?.getTracks().forEach(t => t.stop());
       stream = null;
+      screenStream?.getTracks().forEach(t => t.stop());
+      screenStream = null;
     },
 
     current: () => stream,
