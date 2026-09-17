@@ -19,8 +19,16 @@
   --live: #5bd08a;
   --leave: #f0614f;
 
-  --dock-h: 3.5rem;
+  /* Размер кнопки и поля дока вокруг кнопок — единственные две величины,
+     которые задаются руками. Высота дока и место под него считаются из
+     них, а не прикидываются: прикидка «высота кнопки плюс немного» уже
+     дважды подвела — сперва забыли отступ снизу, потом поля самого дока,
+     и на телефоне в лежачем положении плитки заезжали под кнопки. */
+  --ctl: 3.5rem;
+  --dock-pad: 0.4rem;
+  --dock-h: calc(var(--ctl) + var(--dock-pad) * 2);
   --pad: clamp(1.25rem, 0.8rem + 2vw, 2.25rem);
+  --dock-space: calc(var(--dock-h) + max(var(--pad), env(safe-area-inset-bottom)) + 0.5rem);
 }
 
 * { box-sizing: border-box; }
@@ -233,31 +241,49 @@ body {
 .tiles {
   grid-area: main;
   width: 100%;
+  /* Высота задана явно, а строки делят её поровну: иначе плитки считают
+     свой рост от ширины (4:3) и в лежачем положении телефона вылезают
+     под док, где их закрывают кнопки. */
+  height: 100%;
+  /* Без этого height: 100% ничего не решает: у элемента сетки нижняя
+     граница по умолчанию — размер содержимого, и контейнер вырастает
+     под сумму строк вместо того, чтобы их ужать. */
+  min-height: 0;
   display: grid;
   gap: 0.5rem;
   padding: var(--pad);
-  padding-block-end: calc(var(--dock-h) + var(--pad) * 2);
+  padding-block-end: var(--dock-space);
   align-content: center;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  grid-auto-rows: minmax(0, 1fr);
 }
 
 /* Собеседники пришли — плитки делят экран между собой и заполняют его,
    а не выстраиваются в прокручиваемый столбец. */
 .stage[data-busy='yes'] .tiles {
   height: 100%;
-  grid-auto-rows: 1fr;
+  /* Именно minmax(0, 1fr), а не 1fr: у голого 1fr нижняя граница — размер
+     содержимого, и строки отказываются ужиматься, вытесняя плитки за экран. */
+  grid-auto-rows: minmax(0, 1fr);
   align-content: stretch;
 }
 
 .stage[data-busy='yes'] .tile {
   aspect-ratio: auto;
   min-height: 0;
+  /* margin-inline: auto ниже центрирует плитку, когда та уже своей клетки.
+     Здесь пропорций нет, плитка обязана клетку заполнить — а авто-поля
+     заставили бы её съёжиться по содержимому и оставить пустые полосы. */
+  margin-inline: 0;
 }
 
 /* Пока ждём — своё лицо маленькое, в углу: главное на экране ссылка. */
 .stage[data-busy='no'] .tiles {
   position: absolute;
   inset: auto auto calc(var(--dock-h) + var(--pad) * 1.6) var(--pad);
+  /* height: auto обязательна: базовое height: 100% здесь растянуло бы
+     уголок на весь экран, и своё лицо уехало бы на середину. */
+  height: auto;
   min-height: 0;
   padding: 0;
   width: 8.5rem;
@@ -267,6 +293,11 @@ body {
 .tile {
   position: relative;
   aspect-ratio: 4 / 3;
+  /* Когда высоты не хватает, плитка ужимается ПО ВЫСОТЕ, сохраняя
+     пропорции, и остаётся целиком на виду. */
+  max-height: 100%;
+  min-height: 0;
+  margin-inline: auto;
   border-radius: 1rem;
   overflow: hidden;
   background: var(--surface);
@@ -324,10 +355,10 @@ body {
   /* Карточка не должна лезть под док и за край экрана: на телефоне в
      лежачем положении высоты остаётся мало, и раньше текст беды уходил
      под кнопки, где его было не прочитать. */
-  max-height: calc(100dvh - var(--dock-h) - var(--pad) * 3);
+  max-height: calc(100dvh - var(--dock-space) - var(--pad) * 2);
   overflow-y: auto;
   overscroll-behavior: contain;
-  margin-block-end: calc(var(--dock-h) + var(--pad));
+  margin-block-end: var(--dock-space);
   padding: 1.5rem;
   border-radius: 1.25rem;
   background: rgba(28, 27, 33, 0.82);
@@ -420,7 +451,7 @@ body {
   bottom: max(var(--pad), env(safe-area-inset-bottom));
   display: flex;
   gap: 0.5rem;
-  padding: 0.4rem;
+  padding: var(--dock-pad);
   border-radius: 999px;
   background: rgba(28, 27, 33, 0.8);
   backdrop-filter: blur(20px);
@@ -428,8 +459,8 @@ body {
 }
 
 .ctl {
-  width: var(--dock-h);
-  height: var(--dock-h);
+  width: var(--ctl);
+  height: var(--ctl);
   display: grid;
   place-items: center;
   border: 0;
@@ -971,22 +1002,19 @@ select.field-input {
 /* Низкий экран — телефон в лежачем положении. Здесь дорог каждый пиксель
    высоты: карточка ужимается, ссылка мельчает, плитки жмутся к доку. */
 @media (max-height: 34rem) {
-  .invite {
-    padding: 0.9rem 1rem;
-    margin-block-end: calc(var(--dock-h) + var(--pad) * 0.5);
-  }
+  .invite { padding: 0.9rem 1rem; }
 
   .invite .act--primary { margin-top: 0.75rem; min-height: 2.6rem; }
   .invite-link { font-size: 0.6875rem; line-height: 1.5; }
   .invite-trouble { margin-block-start: 0.6rem; }
   .invite-state, .invite-quiet { margin-block-start: 0.6rem; }
 
-  .tiles {
-    gap: 0.35rem;
-    padding: 0.5rem;
-    padding-block-end: calc(var(--dock-h) + 0.75rem);
-  }
+  .tiles { gap: 0.35rem; padding: 0.5rem; padding-block-end: var(--dock-space); }
 
-  .dock { padding: 0.3rem; gap: 0.35rem; }
-  .ctl { width: 2.9rem; height: 2.9rem; }
+  /* Меняем только две исходные величины — высота дока и место под него
+     пересчитаются сами. Объявлять их надо именно на :root: --dock-space
+     подставляет --ctl там, где сам написан, и переопределение ниже по
+     дереву до него уже не доходит. */
+  :root { --ctl: 2.9rem; --dock-pad: 0.3rem; }
+  .dock { gap: 0.35rem; }
 }
