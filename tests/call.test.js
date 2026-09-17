@@ -438,3 +438,56 @@ describe('кнопка экрана не притворяется тревого
     expect(el.querySelector('#screen .i-off')).toBe(null);
   });
 });
+
+// Зеркалим только своё и только по просьбе. Чужих — никогда: зеркало
+// показало бы людей не такими, какие они есть, и перевернуло бы любой
+// текст, попавший в кадр.
+describe('зеркало по выбору человека', () => {
+  const зеркальна = (el, кто) =>
+    el.querySelector(`[data-peer="${кто}"]`).classList.contains('tile--mirror');
+  const peers = [{peerId: 'петя', stream: null, name: null}];
+
+  it('по умолчанию не зеркалим никого', () => {
+    const el = root();
+
+    renderCall(el, baseState({peers}), fakeActions());
+
+    expect(зеркальна(el, 'self')).toBe(false);
+    expect(зеркальна(el, 'петя')).toBe(false);
+  });
+
+  it('попросили — зеркалим своё', () => {
+    const el = root();
+
+    renderCall(el, baseState({peers, mirror: true}), fakeActions());
+
+    expect(зеркальна(el, 'self')).toBe(true);
+  });
+
+  it('чужое не зеркалим даже когда попросили', () => {
+    const el = root();
+
+    renderCall(el, baseState({peers, mirror: true}), fakeActions());
+
+    expect(зеркальна(el, 'петя')).toBe(false);
+  });
+
+  it('выключили — зеркало снимается', () => {
+    const el = root();
+    renderCall(el, baseState({peers, mirror: true}), fakeActions());
+
+    renderCall(el, baseState({peers, mirror: false}), fakeActions());
+
+    expect(зеркальна(el, 'self')).toBe(false);
+  });
+
+  it('фон не расходится с плиткой — это тоже своё лицо', () => {
+    const el = root();
+
+    renderCall(el, baseState({mirror: true}), fakeActions());
+    expect(el.querySelector('#backdrop').classList.contains('backdrop--mirror')).toBe(true);
+
+    renderCall(el, baseState({mirror: false}), fakeActions());
+    expect(el.querySelector('#backdrop').classList.contains('backdrop--mirror')).toBe(false);
+  });
+});

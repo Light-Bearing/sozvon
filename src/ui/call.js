@@ -72,7 +72,7 @@ const askForSound = container => {
   };
 };
 
-const updateTile = (box, stream, label, isSelf, speaker, speaking) => {
+const updateTile = (box, stream, label, isSelf, speaker, speaking, mirror) => {
   const video = box.querySelector('video');
   // Присваиваем srcObject только когда поток и вправду сменился: лишнее
   // присваивание перезапускает проигрывание.
@@ -108,6 +108,9 @@ const updateTile = (box, stream, label, isSelf, speaker, speaking) => {
     void playThrough(video, speaker);
   }
 
+  // Зеркалим только своё и только по просьбе человека. Чужих — никогда:
+  // там зеркало показало бы людей не такими, какие они есть.
+  box.classList.toggle('tile--mirror', isSelf && Boolean(mirror));
   box.classList.toggle('tile--speaking', Boolean(speaking));
   box.classList.toggle('tile--dark', !hasPicture(stream));
   box.dataset.initial = label.slice(0, 1);
@@ -158,6 +161,8 @@ export const renderCall = (container, state, actions) => {
   // чёрной дырой.
   const backdropSource = hasPicture(state.self) ? state.self : null;
   if (backdrop.srcObject !== backdropSource) backdrop.srcObject = backdropSource;
+  // Фон — тоже своё лицо, и расходиться с плиткой он не должен.
+  backdrop.classList.toggle('backdrop--mirror', Boolean(state.mirror));
 
   // На своей плитке — своё имя, а не «Вы»: это ровно то, что видят
   // остальные, и другого места проверить его нет.
@@ -177,7 +182,15 @@ export const renderCall = (container, state, actions) => {
   for (const {id, stream, label, isSelf} of wanted) {
     const box = present.get(id) ?? makeTile(id, isSelf);
     present.delete(id);
-    updateTile(box, stream, label, isSelf, state.speaker, state.speaking?.includes(id));
+    updateTile(
+      box,
+      stream,
+      label,
+      isSelf,
+      state.speaker,
+      state.speaking?.includes(id),
+      state.mirror,
+    );
     // Вставляем ТОЛЬКО новые. append() для узла, который уже лежит здесь,
     // означает «вынуть и вставить заново» — а для <video> это перезапуск
     // проигрывания. Перерисовок теперь несколько в секунду (уровень звука),

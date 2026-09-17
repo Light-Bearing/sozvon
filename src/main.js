@@ -51,6 +51,10 @@ if (fromLink) {
   history.replaceState(null, '', location.href.split('#')[0]);
 }
 
+// Зеркалить ли своё изображение. Чужих не зеркалим никогда, поэтому
+// настройка про своё и только про своё.
+let mirror = recall('зеркало') === 'да';
+
 const saveName = next => {
   given = trimName(next);
   myName = given ?? HINT;
@@ -96,7 +100,12 @@ const paint = state =>
   renderCall(
     app.querySelector('#screen-call'),
     // Готов ли ретранслятор — знает только страница: ключ живёт здесь.
-    {...state, speaker: picked.speaker, relayReady: Boolean(relay.address && relay.secret)},
+    {
+      ...state,
+      speaker: picked.speaker,
+      mirror,
+      relayReady: Boolean(relay.address && relay.secret),
+    },
     {
       toggleMicrophone: () => room.setMicrophone(!state.mic),
       toggleCamera: () => room.setCamera(!state.cam),
@@ -154,6 +163,12 @@ const settings = createSettings(app, {
   currentName: () => given ?? '',
   nameHint: () => HINT,
   currentDevices: () => picked,
+  currentMirror: () => mirror,
+  setMirror: on => {
+    mirror = Boolean(on);
+    remember('зеркало', mirror ? 'да' : null);
+    if (room) paint(room.state());
+  },
   currentRelay: () => relay,
   currentFlow: () => room?.state().flow ?? null,
   version: typeof __ВЕРСИЯ__ === 'string' ? __ВЕРСИЯ__ : '',

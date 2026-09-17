@@ -51,6 +51,7 @@ export const createSettings = (root, actions) => {
   const panel = root.querySelector('#settings');
   const nameInput = root.querySelector('#name-input');
 
+  const mirror = root.querySelector('#mirror');
   const relayAddress = root.querySelector('#relay-address');
   const relaySecret = root.querySelector('#relay-secret');
 
@@ -73,6 +74,7 @@ export const createSettings = (root, actions) => {
   const open = async () => {
     nameInput.placeholder = actions.nameHint();
     nameInput.value = actions.currentName();
+    if (mirror) mirror.checked = Boolean(actions.currentMirror?.());
     const relay = actions.currentRelay?.() ?? {};
     relayAddress.value = relay.address ?? '';
     relaySecret.value = relay.secret ?? '';
@@ -101,6 +103,8 @@ export const createSettings = (root, actions) => {
 
   // Ретранслятор применяется со следующего звонка: лёд узнаёт о серверах
   // при создании соединения, и менять их у живого смысла нет.
+  if (mirror) mirror.onchange = () => actions.setMirror?.(mirror.checked);
+
   relayAddress.oninput = () => actions.setRelay?.('address', relayAddress.value);
   relaySecret.oninput = () => actions.setRelay?.('secret', relaySecret.value);
 

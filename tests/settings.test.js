@@ -236,3 +236,43 @@ describe('свой ретранслятор в настройках', () => {
     expect(el.querySelector('#relay-secret').value).toBe('тайна');
   });
 });
+
+describe('переключатель зеркала', () => {
+  const open = () => {
+    const el = root();
+    let mirror = false;
+    const actions = {
+      currentName: () => '',
+      nameHint: () => 'Сонная Выдра',
+      currentDevices: () => ({}),
+      currentRelay: () => ({}),
+      currentMirror: () => mirror,
+      setName: vi.fn(),
+      setDevice: vi.fn(),
+      setRelay: vi.fn(),
+      setMirror: vi.fn(on => (mirror = on)),
+    };
+    return {el, actions, panel: createSettings(el, actions), взять: () => mirror};
+  };
+
+  it('при открытии показывает текущее состояние', async () => {
+    const {el, actions, panel} = open();
+    actions.currentMirror = () => true;
+
+    await panel.open();
+
+    expect(el.querySelector('#mirror').checked).toBe(true);
+  });
+
+  it('переключение доходит наверх', async () => {
+    const {el, actions, panel, взять} = open();
+    await panel.open();
+
+    const флажок = el.querySelector('#mirror');
+    флажок.checked = true;
+    флажок.dispatchEvent(new Event('change'));
+
+    expect(actions.setMirror).toHaveBeenCalledWith(true);
+    expect(взять()).toBe(true);
+  });
+});

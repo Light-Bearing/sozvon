@@ -897,3 +897,67 @@ select.field-input {
   background: var(--live);
   color: var(--ink);
 }
+
+/* ── переключатель ──────────────────────────────────────── */
+
+.switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  margin-block-start: 1.25rem;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.switch-box {
+  position: relative;
+  flex: none;
+  width: 2.4rem;
+  height: 1.4rem;
+  margin-block-start: 0.1rem;
+  border-radius: 999px;
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: background 0.16s ease;
+}
+
+.switch-box::after {
+  content: '';
+  position: absolute;
+  top: 0.2rem;
+  left: 0.2rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--dim);
+  transition: translate 0.16s ease, background 0.16s ease;
+}
+
+.switch input:checked + .switch-box { background: var(--live); box-shadow: none; }
+.switch input:checked + .switch-box::after { translate: 1rem 0; background: var(--ink); }
+.switch input:focus-visible + .switch-box { outline: 2px solid var(--text); outline-offset: 3px; }
+
+.switch-text {
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.switch-note {
+  display: block;
+  margin-block-start: 0.15rem;
+  font-size: 0.8125rem;
+  color: var(--faint);
+}
+
+/* Зеркалим только своё, и только если человек попросил. Чужих — никогда:
+   там зеркало показало бы людей не такими, какие они есть, и перевернуло
+   бы любой текст, попавший в кадр. */
+.tile--mirror video { transform: scaleX(-1); }
+.backdrop--mirror { transform: scaleX(-1); }
