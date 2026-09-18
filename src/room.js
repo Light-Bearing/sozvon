@@ -10,6 +10,7 @@ import {createSpeakingTracker, levelFrom} from './speaking.js';
 import {makeName, trimName} from './names.js';
 import {createFlowTracker} from './flow.js';
 import {createChatLog, isReaction, trimText} from './chat.js';
+import {reviveOnDrop} from './revive.js';
 
 const STATS_EVERY_MS = 2_000;
 
@@ -503,6 +504,11 @@ export const createRoom = async ({
   // прошлого снимка этого же трекера, а не с нуля на каждый такт.
   const stats = createStatsTracker();
 
+  // За кем уже присматриваем. WeakSet, а не список: соединения создаёт и
+  // выбрасывает библиотека, и держать их своим списком значило бы мешать
+  // сборщику мусора.
+  const watched = new WeakSet();
+
   const tick = async () => {
     // Группируем по собеседнику, а не сваливаем в один список: report.id
     // устойчив только внутри одного соединения и у разных собеседников
@@ -510,6 +516,13 @@ export const createRoom = async ({
     // снимки парой (собеседник, report.id) именно поэтому.
     const peerReports = [];
     for (const [peerId, pc] of Object.entries(connection.getPeers())) {
+      // Подписываемся здесь, а не на входе собеседника: такт всё равно
+      // обходит все соединения, и ни одно не будет пропущено из-за того,
+      // что в миг прихода его ещё не было в списке.
+      if (!watched.has(pc)) {
+        watched.add(pc);
+        reviveOnDrop(pc);
+      }
       try {
         const reports = [];
         (await pc.getStats()).forEach(report => reports.push(report));
