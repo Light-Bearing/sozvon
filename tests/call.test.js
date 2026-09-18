@@ -2,7 +2,7 @@
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {describe, expect, it, vi} from 'vitest';
-import {renderCall} from '../src/ui/call.js';
+import {forgetShift, renderCall} from '../src/ui/call.js';
 import {explainTrouble} from '../src/ui/screens.js';
 import {STEPS} from '../src/ladder.js';
 
@@ -680,5 +680,84 @@ describe('закрепление участника', () => {
 
     expect(el.querySelector('#tiles').dataset.pinned).toBe('');
     expect(el.querySelector('[data-peer="self"]').style.getPropertyValue('--i')).toBe('');
+  });
+});
+
+describe('полоску участников можно отодвинуть', () => {
+  // При показе экрана полоска закрывает как раз то, что пришли смотреть.
+  // jsdom не считает раскладку — подставляем прямоугольники сами, иначе
+  // все границы окажутся нулевыми и зажимать будет нечего.
+  const прямоугольник = (el, {l, t, w = 100, h = 60}) => {
+    el.getBoundingClientRect = () => ({
+      left: l, top: t, right: l + w, bottom: t + h, width: w, height: h, x: l, y: t,
+    });
+  };
+
+  const тянем = (el, отКуда, куда) => {
+    const событие = (type, [x, y]) =>
+      Object.assign(new Event(type, {bubbles: true}), {clientX: x, clientY: y, pointerId: 1});
+    el.dispatchEvent(событие('pointerdown', отКуда));
+    el.dispatchEvent(событие('pointermove', куда));
+    el.dispatchEvent(событие('pointerup', куда));
+  };
+
+  const сцена = () => {
+    // Смещение живёт в модуле, а не в разметке: без сброса следующий тест
+    // начинал бы там, где закончил предыдущий.
+    forgetShift();
+    const el = root();
+    renderCall(
+      el,
+      baseState({
+        peers: [
+          {peerId: 'p0', stream: null, screen: null, name: 'Маша'},
+          {peerId: 'p1', stream: null, screen: null, name: 'Пётр'},
+        ],
+        pinned: 'p1',
+      }),
+      fakeActions(),
+    );
+    const tiles = el.querySelector('#tiles');
+    прямоугольник(el.querySelector('[data-peer="self"]'), {l: 20, t: 20});
+    прямоугольник(el.querySelector('[data-peer="p0"]'), {l: 130, t: 20});
+    window.innerWidth = 1000;
+    window.innerHeight = 800;
+    return {el, tiles};
+  };
+
+  it('тянем за плитку — полоска смещается', () => {
+    const {tiles} = сцена();
+
+    тянем(tiles.querySelector('[data-peer="self"]'), [60, 50], [160, 250]);
+
+    expect(tiles.style.getPropertyValue('--dx')).toBe('100px');
+    expect(tiles.style.getPropertyValue('--dy')).toBe('200px');
+  });
+
+  it('за кнопку не тянем — ей нажатие', () => {
+    const {tiles} = сцена();
+
+    тянем(tiles.querySelector('[data-peer="self"] .tile-pin'), [60, 50], [160, 250]);
+
+    expect(tiles.style.getPropertyValue('--dx')).toBe('0px');
+  });
+
+  it('за край не уходит — оттуда её не вернуть', () => {
+    const {tiles} = сцена();
+
+    тянем(tiles.querySelector('[data-peer="self"]'), [60, 50], [9000, 9000]);
+
+    // Правый край полоски — 230; дальше 1000 - 230 = 770 её не пустят.
+    expect(tiles.style.getPropertyValue('--dx')).toBe('770px');
+    expect(tiles.style.getPropertyValue('--dy')).toBe('720px');
+  });
+
+  it('сняли закрепление — полоска возвращается в угол', () => {
+    const {el, tiles} = сцена();
+    тянем(tiles.querySelector('[data-peer="self"]'), [60, 50], [160, 250]);
+
+    renderCall(el, baseState({peers: [{peerId: 'p0', stream: null, screen: null, name: 'Маша'}]}), fakeActions());
+
+    expect(tiles.style.getPropertyValue('--dx')).toBe('0px');
   });
 });

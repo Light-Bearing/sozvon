@@ -128,6 +128,7 @@ export const createRoom = async ({
   // уже в обработчике onPeerJoin, который пишется выше него.
   let namesChannel = null;
   let chatChannel = null;
+  let screensChannel = null;
 
   // Переписка. Живёт столько же, сколько соединение: канал данных требует
   // того же, что и звук. Зато когда связь есть, написать можно всегда.
@@ -188,6 +189,9 @@ export const createRoom = async ({
           // Вошедший ещё не знает, как нас зовут: посылать имя при входе
           // должен тот, кто уже внутри, — сам новичок о нас не спросит.
           void namesChannel?.send(myName);
+          // Показ мог идти ещё до его прихода — иначе он увидит дорожку,
+          // но не будет знать, что это экран, а не забытая плитка.
+          void screensChannel?.send(screenWanted);
           announce();
         },
         onPeerLeave: peerId => {
@@ -198,8 +202,16 @@ export const createRoom = async ({
           announce();
         },
         onPeerStream: (peerStream, peerId, role = 'camera') => {
-          if (role === 'screen') screens.set(peerId, peerStream);
-          else peers.set(peerId, peerStream);
+          // У камеры и экрана правила разные, и это не небрежность.
+          // Собеседник без картинки в разговоре остаётся — плитка темнеет,
+          // но живёт. А плитка экрана существует только ради самого
+          // экрана: нет дорожки — нечего и показывать.
+          if (role === 'screen') {
+            if (peerStream.getVideoTracks().length > 0) screens.set(peerId, peerStream);
+            else screens.delete(peerId);
+          } else {
+            peers.set(peerId, peerStream);
+          }
           announce();
         },
       },
@@ -247,6 +259,21 @@ export const createRoom = async ({
       // непрочитанного значит звать читать то, что читать нечего.
       if (isReaction(raw)) flash(peerId, trimText(raw));
       else unread += 1;
+      announce();
+    };
+  }
+
+  // Конец показа экрана приходится объявлять словами. Снятие дорожки у
+  // отправителя даёт получателю не 'ended', а 'mute' — дорожка остаётся
+  // живой, и отличить «показ кончился» от «кадр задержался на
+  // пересогласовании» по её состоянию нельзя. Гадали бы — плитка либо
+  // висела бы вечно после конца показа, либо моргала бы на каждом
+  // пересогласовании.
+  screensChannel = typeof connection.action === 'function' ? connection.action('screen') : null;
+  if (screensChannel) {
+    screensChannel.onMessage = (on, {peerId}) => {
+      if (on) return;
+      screens.delete(peerId);
       announce();
     };
   }
@@ -507,6 +534,7 @@ export const createRoom = async ({
           connection.addTrack(change.added, change.stream, {role: 'screen'});
         }
         if (change?.removed) connection.removeTrack(change.removed);
+        void screensChannel?.send(on);
       } catch {
         // Человек передумал в окне выбора окна — это не поломка.
         screenWanted = false;

@@ -2,7 +2,8 @@ import {generateSecret, linkToSecret} from './room-secret.js';
 import {createRoom} from './room.js';
 import {createAwake} from './awake.js';
 import {familiesFor, parseFamilyNames} from './signal/public-channels.js';
-import {renderCall} from './ui/call.js';
+import {forgetShift, renderCall} from './ui/call.js';
+import {followScreens} from './focus.js';
 import {explainFailure, showScreen} from './ui/screens.js';
 import {renderDiagnostics} from './ui/diagnostics.js';
 import {bindHotkeys} from './ui/hotkeys.js';
@@ -101,7 +102,17 @@ const invited = linkToSecret(location.href);
 // изменение), и настройки, когда меняется то, чем комната не распоряжается.
 // Вывод звука — как раз такое: он переключается у проигрывателя, а не у
 // потока, поэтому дописывается к состоянию здесь, а не живёт в room.js.
-const paint = state =>
+// Чужой показ экрана сам становится крупным — правила и оговорки живут в
+// src/focus.js, здесь только память между перерисовками.
+let screensSeen = new Set();
+
+const paint = state => {
+  ({pinned, seen: screensSeen} = followScreens({
+    peers: state.peers,
+    selfScreen: state.selfScreen,
+    pinned,
+    seen: screensSeen,
+  }));
   renderCall(
     app.querySelector('#screen-call'),
     // Готов ли ретранслятор — знает только страница: ключ живёт здесь.
@@ -125,6 +136,8 @@ const paint = state =>
         await awake.stop();
         room = null;
         pinned = null;
+        screensSeen = new Set();
+        forgetShift();
         settings.close();
         chat.close();
         location.hash = '';
@@ -132,6 +145,7 @@ const paint = state =>
       },
     },
   );
+};
 
 const fail = error => {
   const {title, advice} = explainFailure(error);

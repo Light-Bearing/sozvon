@@ -65,6 +65,82 @@ const makeTile = (id, isSelf) => {
   return box;
 };
 
+// Куда человек перетащил полоску участников. Живёт здесь, а не в состоянии
+// комнаты: за перетаскивание приходит по десятку событий в секунду, и гонять
+// их через полную перерисовку — верный способ получить рывки вместо
+// движения. Сбрасывается, когда закрепление снимают: в следующий раз
+// полоска должна начинаться с угла.
+const shift = {x: 0, y: 0};
+
+export const forgetShift = () => {
+  shift.x = 0;
+  shift.y = 0;
+};
+
+const applyShift = tiles => {
+  tiles.style.setProperty('--dx', `${shift.x}px`);
+  tiles.style.setProperty('--dy', `${shift.y}px`);
+};
+
+// Полоску можно двигать: при показе экрана она закрывает как раз то, что
+// пришли смотреть, и человек должен мочь её отодвинуть.
+const makeDraggable = tiles => {
+  if (tiles.dataset.draggable) return;
+  tiles.dataset.draggable = 'да';
+
+  let from = null;
+
+  tiles.addEventListener('pointerdown', event => {
+    if (!tiles.dataset.pinned) return;
+    const box = event.target.closest?.('.tile');
+    if (!box || box.classList.contains('tile--pinned')) return;
+    // Кнопке — нажатие, а не перетаскивание.
+    if (event.target.closest('.tile-pin')) return;
+
+    // Границы считаем один раз, на старте: пока тянут, раскладка не
+    // меняется — меняется только сдвиг, и пересчитывать её на каждом
+    // событии значило бы мерить десятки раз в секунду впустую.
+    const мелкие = [...tiles.querySelectorAll('.tile:not(.tile--pinned)')];
+    const края = мелкие.map(t => t.getBoundingClientRect());
+    from = {
+      x: event.clientX,
+      y: event.clientY,
+      shiftX: shift.x,
+      shiftY: shift.y,
+      left: Math.min(...края.map(r => r.left)) - shift.x,
+      top: Math.min(...края.map(r => r.top)) - shift.y,
+      right: Math.max(...края.map(r => r.right)) - shift.x,
+      bottom: Math.max(...края.map(r => r.bottom)) - shift.y,
+    };
+    tiles.setPointerCapture?.(event.pointerId);
+  });
+
+  tiles.addEventListener('pointermove', event => {
+    if (!from) return;
+    const зажать = (want, low, high) => Math.min(Math.max(want, low), high);
+    // Полоска не должна уезжать за край: оттуда её не вернуть.
+    shift.x = зажать(
+      from.shiftX + event.clientX - from.x,
+      -from.left,
+      window.innerWidth - from.right,
+    );
+    shift.y = зажать(
+      from.shiftY + event.clientY - from.y,
+      -from.top,
+      window.innerHeight - from.bottom,
+    );
+    applyShift(tiles);
+  });
+
+  const finish = event => {
+    if (!from) return;
+    from = null;
+    tiles.releasePointerCapture?.(event.pointerId);
+  };
+  tiles.addEventListener('pointerup', finish);
+  tiles.addEventListener('pointercancel', finish);
+};
+
 // Браузеры телефонов не начинают играть со звуком сами. Отказ приходит
 // молча и выглядит ровно как «собеседник молчит» — поэтому спрашиваем
 // прямо, одной кнопкой на весь экран.
@@ -236,6 +312,9 @@ export const renderCall = (container, state, actions) => {
   // Закреплять нечего, пока плитка одна.
   const canPin = wanted.length > 1;
   tiles.dataset.pinned = pinned ?? '';
+  makeDraggable(tiles);
+  if (!pinned) forgetShift();
+  applyShift(tiles);
   let small = 0;
 
   for (const {id, stream, label, isSelf} of wanted) {

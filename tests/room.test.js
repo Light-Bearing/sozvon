@@ -873,11 +873,17 @@ describe('показ экрана', () => {
     expect(room.state().screen).toBe(false);
   });
 
+  // Поток экрана теперь спрашивают о дорожках: пустой поток — это не показ.
+  const потокЭкрана = (дорожек = 1) => ({
+    id: 'экран',
+    getVideoTracks: () => Array.from({length: дорожек}, (_, i) => ({kind: 'video', id: i})),
+  });
+
   it('экран собеседника приходит отдельным потоком, а не вместо лица', async () => {
     const {room, connection} = await openRoom({media: mediaWithScreen(null)});
     connection.handlers.onPeerJoin('петя');
     const лицо = {id: 'лицо'};
-    const экран = {id: 'экран'};
+    const экран = потокЭкрана();
 
     connection.handlers.onPeerStream(лицо, 'петя', 'camera');
     connection.handlers.onPeerStream(экран, 'петя', 'screen');
@@ -888,6 +894,56 @@ describe('показ экрана', () => {
       screen: экран,
       name: null,
     });
+  });
+
+  it('собеседник прекратил показ — плитка экрана уходит', async () => {
+    // Снятие дорожки у отправителя даёт получателю 'mute', а не 'ended':
+    // по состоянию дорожки конец показа не отличить от задержки на
+    // пересогласовании. Поэтому конец объявляется словом по каналу данных.
+    const {room, connection} = await openRoom({media: mediaWithScreen(null)});
+    connection.handlers.onPeerJoin('петя');
+    connection.handlers.onPeerStream({id: 'лицо'}, 'петя', 'camera');
+    connection.handlers.onPeerStream(потокЭкрана(), 'петя', 'screen');
+    expect(room.state().peers[0].screen).not.toBe(null);
+
+    connection.channel('screen').onMessage(false, {peerId: 'петя'});
+
+    expect(room.state().peers[0].screen).toBe(null);
+    // Сам собеседник никуда не делся — ушла только плитка экрана.
+    expect(room.state().peers[0].stream).toEqual({id: 'лицо'});
+  });
+
+  it('пустой поток экрана плиткой не становится', async () => {
+    const {room, connection} = await openRoom({media: mediaWithScreen(null)});
+    connection.handlers.onPeerJoin('петя');
+    connection.handlers.onPeerStream(потокЭкрана(), 'петя', 'screen');
+
+    connection.handlers.onPeerStream(потокЭкрана(0), 'петя', 'screen');
+
+    expect(room.state().peers[0].screen).toBe(null);
+  });
+
+  it('о своём показе сообщаем и тому, кто вошёл позже', async () => {
+    // Иначе вошедший увидит дорожку и не будет знать, что это экран, —
+    // а по одной дорожке этого не сказать.
+    const дорожка = {kind: 'video', id: 'экран'};
+    const {room, connection} = await openRoom({media: mediaWithScreen(дорожка)});
+    await room.setScreen(true);
+    connection.channel('screen').sent.length = 0;
+
+    connection.handlers.onPeerJoin('поздний');
+
+    expect(connection.channel('screen').sent).toEqual([true]);
+  });
+
+  it('прекратили показ — говорим об этом собеседникам', async () => {
+    const дорожка = {kind: 'video', id: 'экран'};
+    const {room, connection} = await openRoom({media: mediaWithScreen(дорожка)});
+    await room.setScreen(true);
+
+    await room.setScreen(false);
+
+    expect(connection.channel('screen').sent).toEqual([true, false]);
   });
 
   it('человек передумал в окне выбора — это не поломка, показ просто не начался', async () => {
