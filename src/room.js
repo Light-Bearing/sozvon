@@ -104,6 +104,8 @@ export const createRoom = async ({
       stream,
       screen: screens.get(peerId) ?? null,
       name: names.get(peerId) ?? null,
+      mic: peerMedia.get(peerId)?.mic ?? null,
+      cam: peerMedia.get(peerId)?.cam ?? null,
     })),
     // Свой экран — чтобы человек видел, что именно показывает.
     selfScreen: media.screen?.() ?? null,
@@ -129,6 +131,16 @@ export const createRoom = async ({
   let namesChannel = null;
   let chatChannel = null;
   let screensChannel = null;
+  let mediaChannel = null;
+
+  // Что у собеседника с микрофоном и камерой. Выводить это из дорожек
+  // нельзя: выключенная дорожка приходит живой и просто молчит, и «он
+  // выключил микрофон» выглядит точно так же, как «связь не встала». В
+  // разговоре на пятерых это и есть главный вопрос — что именно сломалось.
+  //
+  // Пока собеседник не сказал о себе, не знаем: null, а не false. Соврать
+  // «у него выключен микрофон» хуже, чем промолчать.
+  const peerMedia = new Map();
 
   // Переписка. Живёт столько же, сколько соединение: канал данных требует
   // того же, что и звук. Зато когда связь есть, написать можно всегда.
@@ -181,7 +193,11 @@ export const createRoom = async ({
       },
       handlers: {
         onTrouble: list => {
-          troubles = [...new Set(list.map(({kind}) => kind))];
+          // Раньше здесь оставались только виды бед, а с кем именно не
+          // вышло — терялось. В разговоре на пятерых это и подвело: двое
+          // не видели друг друга, а экран говорил ровно то же, что сказал
+          // бы при одном недостижимом собеседнике.
+          troubles = list.map(({peerId, kind}) => ({peerId, kind}));
           announce();
         },
         onPeerJoin: peerId => {
@@ -192,12 +208,14 @@ export const createRoom = async ({
           // Показ мог идти ещё до его прихода — иначе он увидит дорожку,
           // но не будет знать, что это экран, а не забытая плитка.
           void screensChannel?.send(screenWanted);
+          void mediaChannel?.send({mic: microphoneWanted, cam: cameraWanted});
           announce();
         },
         onPeerLeave: peerId => {
           peers.delete(peerId);
           screens.delete(peerId);
           names.delete(peerId);
+          peerMedia.delete(peerId);
           forgetReaction(peerId);
           announce();
         },
@@ -269,6 +287,14 @@ export const createRoom = async ({
   // пересогласовании» по её состоянию нельзя. Гадали бы — плитка либо
   // висела бы вечно после конца показа, либо моргала бы на каждом
   // пересогласовании.
+  mediaChannel = typeof connection.action === 'function' ? connection.action('media') : null;
+  if (mediaChannel) {
+    mediaChannel.onMessage = (value, {peerId}) => {
+      peerMedia.set(peerId, {mic: Boolean(value?.mic), cam: Boolean(value?.cam)});
+      announce();
+    };
+  }
+
   screensChannel = typeof connection.action === 'function' ? connection.action('screen') : null;
   if (screensChannel) {
     screensChannel.onMessage = (on, {peerId}) => {
@@ -378,6 +404,10 @@ export const createRoom = async ({
   // Теперь пишет только эта функция, и итог всегда один и тот же расчёт:
   // микрофон — как хочет человек (ступень его не ограничивает, звук всегда
   // всем); камера — как хочет человек, и только если ступень это позволяет.
+  // О себе рассказываем сами: собеседнику иначе неоткуда узнать, выключен
+  // микрофон или просто молчит.
+  const tellMedia = () => void mediaChannel?.send({mic: microphoneWanted, cam: cameraWanted});
+
   const applyDesiredMedia = () => {
     media.setMicrophone(microphoneWanted);
     // Показ экрана лестнице не подчиняется: если человек показывает экран,
@@ -514,6 +544,7 @@ export const createRoom = async ({
       microphoneWanted = on;
       if (!on) stopMicrophone();
       applyDesiredMedia();
+      tellMedia();
       announce();
       return on ? startMicrophone() : undefined;
     },
@@ -549,6 +580,7 @@ export const createRoom = async ({
       cameraWanted = on;
       if (!on) stopCamera();
       applyDesiredMedia();
+      tellMedia();
       announce();
       return on ? startCamera() : undefined;
     },

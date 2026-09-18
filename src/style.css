@@ -896,6 +896,36 @@ select.field-input {
   color: var(--faint);
 }
 
+/* Что у человека выключено. Рядом с именем, а не поверх лица: это
+   справка, а не сообщение. */
+.tile-gear {
+  position: absolute;
+  z-index: 2;
+  left: 0.6rem;
+  top: 0.6rem;
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 0.5rem;
+  color: var(--text);
+  background: rgba(10, 9, 12, 0.6);
+  backdrop-filter: blur(8px);
+}
+
+.tile-gear .i { width: 0.95rem; height: 0.95rem; }
+
+/* Показываем ровно то, что выключено. Через display, а не hidden: у <svg>
+   свойства hidden нет, и присваивание в него не делает ничего. */
+.tile-gear .i-mute,
+.tile-gear .i-blind { display: none; }
+.tile-gear--mute .i-mute { display: block; }
+.tile-gear--blind .i-blind { display: block; }
+
+/* В полоске места нет ни на что, кроме кнопки. */
+.tiles[data-pinned]:not([data-pinned='']) .tile:not(.tile--pinned) .tile-gear {
+  display: none;
+}
+
 /* ── крупно и обратно ───────────────────────────────────── */
 
 .tile-pin {

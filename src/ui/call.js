@@ -45,6 +45,15 @@ const makeTile = (id, isSelf) => {
   const name = document.createElement('span');
   name.className = 'tile-name';
 
+  // Что у человека выключено. В разговоре на пятерых это первый вопрос:
+  // «его не слышно» — он выключил микрофон или связь не встала? По
+  // молчащей дорожке одно от другого не отличить.
+  const gear = document.createElement('span');
+  gear.className = 'tile-gear';
+  gear.innerHTML =
+    '<svg class="i i-mute"><use href="#i-mic-off" /></svg>' +
+    '<svg class="i i-blind"><use href="#i-cam-off" /></svg>';
+
   // Крупно — и обратно. Кнопка, а не клик по всей плитке: по плитке
   // промахиваются пальцем, а объявить её читалке экрана нечем.
   const pin = document.createElement('button');
@@ -61,7 +70,7 @@ const makeTile = (id, isSelf) => {
   reaction.hidden = true;
   reaction.setAttribute('aria-hidden', 'true');
 
-  box.append(video, name, pin, reaction);
+  box.append(video, name, gear, pin, reaction);
   return box;
 };
 
@@ -185,7 +194,9 @@ const showReaction = (box, reaction) => {
   spot.style.animation = '';
 };
 
-const updateTile = (box, stream, label, isSelf, speaker, speaking, mirror, reaction) => {
+// Доводы объектом, а не по порядку: их стало восемь, и перепутать два
+// подряд идущих булевых — вопрос времени.
+const updateTile = (box, {stream, label, isSelf, speaker, speaking, mirror, reaction, mic, cam}) => {
   const video = box.querySelector('video');
   // Присваиваем srcObject только когда поток и вправду сменился: лишнее
   // присваивание перезапускает проигрывание.
@@ -235,6 +246,20 @@ const updateTile = (box, stream, label, isSelf, speaker, speaking, mirror, react
   if (name.textContent !== label) name.textContent = label;
 
   showReaction(box, reaction);
+
+  // null — «человек ещё не сказал о себе»: соврать «у него выключен
+  // микрофон» хуже, чем промолчать. Экран о себе не рассказывает вовсе.
+  //
+  // Прятать значки классом, а не свойством hidden: hidden есть у
+  // HTMLElement, а <svg> — не он. Присваивание проходит молча, свойство
+  // потом честно читается как true, и даже замер подтверждает «скрыт» —
+  // а на экране оба значка стоят рядом.
+  const gear = box.querySelector('.tile-gear');
+  const mute = mic === false;
+  const blind = cam === false;
+  gear.classList.toggle('tile-gear--mute', mute);
+  gear.classList.toggle('tile-gear--blind', blind);
+  gear.hidden = !mute && !blind;
 };
 
 // Собеседник назвался — зовём как просил. Не назвался (имя ещё не дошло
@@ -287,14 +312,23 @@ export const renderCall = (container, state, actions) => {
   // Экран — отдельная плитка рядом с лицом, а не вместо него: показывать
   // можно и то и другое разом. Подпись сразу говорит, чей это экран.
   const wanted = [
-    {id: 'self', stream: state.self, label: state.name ?? 'Вы', isSelf: true},
+    {
+      id: 'self',
+      stream: state.self,
+      label: state.name ?? 'Вы',
+      isSelf: true,
+      mic: state.mic,
+      cam: state.cam,
+    },
+    // У плитки экрана значков нет: микрофон и камера — про человека, а не
+    // про то, что он показывает.
     ...(state.selfScreen
       ? [{id: 'self|screen', stream: state.selfScreen, label: 'Ваш экран', isSelf: true}]
       : []),
-    ...state.peers.flatMap(({peerId, stream, screen, name}, i) => {
+    ...state.peers.flatMap(({peerId, stream, screen, name, mic, cam}, i) => {
       const кто = nameFor(name, i, state.peers.length);
       return [
-        {id: peerId, stream, label: кто, isSelf: false},
+        {id: peerId, stream, label: кто, isSelf: false, mic, cam},
         ...(screen
           ? [{id: `${peerId}|screen`, stream: screen, label: `Экран · ${кто}`, isSelf: false}]
           : []),
@@ -317,19 +351,20 @@ export const renderCall = (container, state, actions) => {
   applyShift(tiles);
   let small = 0;
 
-  for (const {id, stream, label, isSelf} of wanted) {
+  for (const {id, stream, label, isSelf, mic, cam} of wanted) {
     const box = present.get(id) ?? makeTile(id, isSelf);
     present.delete(id);
-    updateTile(
-      box,
+    updateTile(box, {
       stream,
       label,
       isSelf,
-      state.speaker,
-      state.speaking?.includes(id),
-      state.mirror,
-      state.reactions?.get(id),
-    );
+      speaker: state.speaker,
+      speaking: state.speaking?.includes(id),
+      mirror: state.mirror,
+      reaction: state.reactions?.get(id),
+      mic,
+      cam,
+    });
     // Вставляем ТОЛЬКО новые. append() для узла, который уже лежит здесь,
     // означает «вынуть и вставить заново» — а для <video> это перезапуск
     // проигрывания. Перерисовок теперь несколько в секунду (уровень звука),
@@ -362,7 +397,7 @@ export const renderCall = (container, state, actions) => {
   // Беда с соединением — единственное, что может вывести карточку обратно
   // на экран, когда собеседники уже есть: если к кому-то не достучаться,
   // ссылка нужна тут же, под объяснением.
-  const trouble = state.troubles?.[0];
+  const trouble = state.troubles?.length ? state.troubles : null;
 
   container.querySelector('#link').textContent = state.link;
   container.querySelector('#invite').hidden = !alone && !trouble;

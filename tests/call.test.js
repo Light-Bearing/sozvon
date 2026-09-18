@@ -761,3 +761,63 @@ describe('полоску участников можно отодвинуть', 
     expect(tiles.style.getPropertyValue('--dx')).toBe('0px');
   });
 });
+
+describe('значки микрофона и камеры на плитке', () => {
+  const собеседник = (over = {}) => ({
+    peerId: 'петя', stream: null, screen: null, name: 'Пётр', mic: true, cam: true, ...over,
+  });
+
+  it('всё включено — значков нет', () => {
+    const el = root();
+
+    renderCall(el, baseState({peers: [собеседник()]}), fakeActions());
+
+    expect(el.querySelector('[data-peer="петя"] .tile-gear').hidden).toBe(true);
+  });
+
+  it('микрофон выключен — виден перечёркнутый микрофон', () => {
+    const el = root();
+
+    renderCall(el, baseState({peers: [собеседник({mic: false})]}), fakeActions());
+
+    // Проверяем классы, а не hidden у самих <svg>: у SVG этого свойства
+    // нет, присваивание в него проходит молча, и такая проверка
+    // подтверждала бы то, чего на экране не происходит.
+    const значки = el.querySelector('[data-peer="петя"] .tile-gear');
+    expect(значки.hidden).toBe(false);
+    expect(значки.classList.contains('tile-gear--mute')).toBe(true);
+    expect(значки.classList.contains('tile-gear--blind')).toBe(false);
+  });
+
+  it('собеседник ещё не сказал о себе — молчим, а не врём', () => {
+    // null — это «не знаю». Показать «у него выключен микрофон» по
+    // незнанию хуже, чем не показать ничего: человек начнёт чинить то,
+    // что не сломано.
+    const el = root();
+
+    renderCall(el, baseState({peers: [собеседник({mic: null, cam: null})]}), fakeActions());
+
+    expect(el.querySelector('[data-peer="петя"] .tile-gear').hidden).toBe(true);
+  });
+
+  it('на своей плитке — своё состояние', () => {
+    const el = root();
+
+    renderCall(el, baseState({mic: false, cam: true, peers: [собеседник()]}), fakeActions());
+
+    expect(el.querySelector('[data-peer="self"] .tile-gear').hidden).toBe(false);
+  });
+
+  it('у плитки экрана значков нет', () => {
+    // Микрофон и камера — про человека, а не про то, что он показывает.
+    const el = root();
+
+    renderCall(
+      el,
+      baseState({peers: [собеседник({mic: false, screen: {getVideoTracks: () => []}})]}),
+      fakeActions(),
+    );
+
+    expect(el.querySelector('[data-peer="петя|screen"] .tile-gear').hidden).toBe(true);
+  });
+});

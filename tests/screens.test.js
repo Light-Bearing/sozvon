@@ -87,4 +87,45 @@ describe('объяснение беды со связью', () => {
     expect(explainTrouble('unknown').title).toBe('Соединиться с собеседником не вышло');
     expect(explainTrouble(undefined).title).toBe('Соединиться с собеседником не вышло');
   });
+
+  it('когда за бортом несколько — сперва счёт, потом причина', () => {
+    // Живой разговор на пятерых: двое не видели друг друга, а экран
+    // говорил ровно то же, что сказал бы при одном недостижимом. Счёт —
+    // единственное, из чего видно, что разговор идёт, но не весь.
+    const {title, advice} = explainTrouble([
+      {peerId: 'петя', kind: 'no-path'},
+      {peerId: 'вася', kind: 'no-path'},
+    ]);
+
+    expect(title).toBe('Связь не встала с двумя участниками');
+    expect(advice).toContain('Остальных вы видите и слышите');
+  });
+
+  it('с одним — по-прежнему причина, а не счёт', () => {
+    expect(explainTrouble([{peerId: 'петя', kind: 'no-path'}]).title).toBe(
+      'Прямого пути между вашими сетями нет',
+    );
+  });
+
+  it('из нескольких причин выбирается самая объяснительная', () => {
+    // «Оборвалось на полуслове» ничего не советует, «прямого пути нет» —
+    // советует. Показать надо то, из чего понятно, что делать.
+    const {advice} = explainTrouble([
+      {peerId: 'петя', kind: 'handshake'},
+      {peerId: 'вася', kind: 'no-path'},
+    ]);
+
+    expect(advice).toContain('не выпускает');
+  });
+
+  it('без ретранслятора про него говорят, с ретранслятором — молчат', () => {
+    const беда = [{peerId: 'петя', kind: 'no-path'}];
+
+    expect(explainTrouble(беда, {relayReady: false}).advice).toContain('Ретранслятор');
+    expect(explainTrouble(беда, {relayReady: true}).advice).not.toContain('Ретранслятор');
+  });
+
+  it('пустой список — нечего и показывать', () => {
+    expect(explainTrouble([])).toEqual({title: '', advice: ''});
+  });
 });

@@ -706,11 +706,14 @@ describe('беда с прямым путём доходит до состоян
 
     connection.handlers.onTrouble([{peerId: 'петя', kind: 'no-path'}]);
 
-    expect(room.state().troubles).toEqual(['no-path']);
+    expect(room.state().troubles).toEqual([{peerId: 'петя', kind: 'no-path'}]);
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
-  it('одинаковая беда у двоих названа один раз', async () => {
+  it('одинаковая беда у двоих остаётся двумя бедами', async () => {
+    // Схлопывать по виду нельзя: тогда «не вижу двоих из четырёх» выглядит
+    // ровно как «не вижу одного», и человек не узнает, что разговор идёт
+    // не весь. Живой разговор на пятерых сломался ровно на этом.
     const {room, connection} = await openRoom();
 
     connection.handlers.onTrouble([
@@ -718,7 +721,10 @@ describe('беда с прямым путём доходит до состоян
       {peerId: 'вася', kind: 'no-path'},
     ]);
 
-    expect(room.state().troubles).toEqual(['no-path']);
+    expect(room.state().troubles).toEqual([
+      {peerId: 'петя', kind: 'no-path'},
+      {peerId: 'вася', kind: 'no-path'},
+    ]);
   });
 
   it('снятая жалоба очищает состояние', async () => {
@@ -759,7 +765,7 @@ describe('имена участников', () => {
     connection.channel('name').onMessage('Сонная Выдра', {peerId: 'петя'});
 
     expect(room.state().peers).toEqual([
-      {peerId: 'петя', stream: null, screen: null, name: 'Сонная Выдра'},
+      {peerId: 'петя', stream: null, screen: null, name: 'Сонная Выдра', mic: null, cam: null},
     ]);
   });
 
@@ -893,6 +899,8 @@ describe('показ экрана', () => {
       stream: лицо,
       screen: экран,
       name: null,
+      mic: null,
+      cam: null,
     });
   });
 
