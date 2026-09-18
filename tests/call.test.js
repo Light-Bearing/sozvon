@@ -880,3 +880,37 @@ describe('звук отдельно от картинки', () => {
     expect(плитка.querySelector('audio').srcObject).toBe(s);
   });
 });
+
+describe('строка про лестницу качества на экране звонка', () => {
+  const много = n =>
+    Array.from({length: n - 1}, (_, i) => ({
+      peerId: 'p' + i, stream: null, screen: null, name: 'Кто-то ' + i,
+    }));
+
+  it('вчетвером строки нет', () => {
+    const el = root();
+
+    renderCall(el, baseState({step: STEPS[1], peers: много(4)}), fakeActions());
+
+    expect(el.querySelector('#mode').hidden).toBe(true);
+  });
+
+  it('впятером строка объясняет, куда делись камеры', () => {
+    const el = root();
+
+    renderCall(el, baseState({step: STEPS[2], peers: много(5)}), fakeActions());
+
+    const строка = el.querySelector('#mode');
+    expect(строка.hidden).toBe(false);
+    expect(строка.textContent).toContain('камера включается у того, кто говорит');
+  });
+
+  it('строка уходит, когда людей снова мало', () => {
+    const el = root();
+    renderCall(el, baseState({step: STEPS[2], peers: много(5)}), fakeActions());
+
+    renderCall(el, baseState({step: STEPS[0], peers: много(2)}), fakeActions());
+
+    expect(el.querySelector('#mode').hidden).toBe(true);
+  });
+});

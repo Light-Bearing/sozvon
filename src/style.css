@@ -735,6 +735,32 @@ select.field-input {
 
 /* Браузеры телефонов не начинают играть со звуком сами. Молчаливый отказ
    неотличим от «собеседник молчит», поэтому спрашиваем прямо. */
+/* Строка занимает место, а не ложится поверх: иначе она накрывает подписи
+   нижнего ряда плиток. Плитки ужимаются ровно на её высоту — тем же
+   способом, каким они уступают место доку. */
+.stage[data-mode='да'] .tiles {
+  padding-block-end: calc(var(--dock-space) + 2.1rem);
+}
+
+/* Спокойная строка о том, что делает лестница качества: сообщение, а не
+   тревога, поэтому без цвета и без движения — в самом низу, над доком. */
+.mode {
+  grid-area: main;
+  z-index: 3;
+  justify-self: center;
+  align-self: end;
+  margin: 0;
+  margin-block-end: var(--dock-space);
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(10, 9, 12, 0.6);
+  backdrop-filter: blur(8px);
+  color: var(--dim);
+  font-size: 0.8125rem;
+  text-align: center;
+  pointer-events: none;
+}
+
 .sound-blocked {
   grid-area: main;
   z-index: 3;

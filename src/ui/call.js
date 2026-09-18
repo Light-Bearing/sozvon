@@ -9,7 +9,7 @@
 // .tile--dark в style.css), а фон остаётся своим спокойным градиентом.
 
 import {playThrough} from '../devices.js';
-import {explainTrouble} from './screens.js';
+import {explainStep, explainTrouble} from './screens.js';
 import {renderChat} from './chat.js';
 
 // Картинка есть, когда дорожка жива и не погашена хозяином.
@@ -415,6 +415,18 @@ export const renderCall = (container, state, actions) => {
   }
 
   askForSound(container);
+
+  // Про камеры, выключенные лестницей, молчать нельзя: тёмные плитки
+  // выглядят как поломка, а это всего лишь плата за многолюдность.
+  const mode = container.querySelector('#mode');
+  if (mode) {
+    const текст = explainStep(state.step, state.peers.length + 1);
+    mode.textContent = текст;
+    mode.hidden = !текст;
+    // Пометка на сцене — чтобы плитки уступили строке место, а не легли
+    // под неё: иначе она накрывает подписи нижнего ряда.
+    container.dataset.mode = текст ? 'да' : '';
+  }
 
   // Беда с соединением — единственное, что может вывести карточку обратно
   // на экран, когда собеседники уже есть: если к кому-то не достучаться,

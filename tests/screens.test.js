@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import {describe, expect, it} from 'vitest';
-import {explainFailure, explainTrouble, showScreen} from '../src/ui/screens.js';
+import {explainFailure, explainStep, explainTrouble, showScreen} from '../src/ui/screens.js';
+import {STEPS} from '../src/ladder.js';
 
 const root = () => {
   const el = document.createElement('div');
@@ -127,5 +128,26 @@ describe('объяснение беды со связью', () => {
 
   it('пустой список — нечего и показывать', () => {
     expect(explainTrouble([])).toEqual({title: '', advice: ''});
+  });
+});
+
+describe('лестница качества объясняется словами', () => {
+  it('пока камеры у всех — говорить нечего', () => {
+    expect(explainStep(STEPS[0], 2)).toBe('');
+    expect(explainStep(STEPS[1], 4)).toBe('');
+  });
+
+  it('с пяти человек — камера у говорящего, и об этом сказано', () => {
+    // Иначе выключенные лестницей камеры выглядят как поломка: все плитки
+    // тёмные, и непонятно, кто виноват и что чинить.
+    expect(explainStep(STEPS[2], 5)).toBe('Вас 5 — камера включается у того, кто говорит');
+  });
+
+  it('с девяти — один звук', () => {
+    expect(explainStep(STEPS[3], 9)).toBe('Вас 9 — идёт только звук, без камер');
+  });
+
+  it('без ступени молчим', () => {
+    expect(explainStep(null, 5)).toBe('');
   });
 });
