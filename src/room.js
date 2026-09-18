@@ -537,6 +537,37 @@ export const createRoom = async ({
       return true;
     },
 
+    // Страница снова видна. Пока её не было, телефон мог приостановить
+    // AudioContext и отобрать дорожки — что именно он отберёт, зависит от
+    // версии Android и от того, сколько страница пробыла скрытой. Поэтому
+    // не гадаем, а проверяем каждую по отдельности и возвращаем только то,
+    // чего человек и правда хочет.
+    //
+    // Кончившуюся дорожку не воскресить: её можно только снять и захватить
+    // заново. Заглушённую (muted) трогать нельзя — она оживёт сама, а
+    // перезахват ради неё дёрнул бы устройство впустую.
+    wake: async () => {
+      if (audio?.state === 'suspended') {
+        try {
+          await audio.resume();
+        } catch {
+          // Не вышло — уровень звука просто не покажется.
+        }
+      }
+      const alive = kind =>
+        (media.current()?.[kind]() ?? []).some(track => track.readyState !== 'ended');
+
+      if (microphoneWanted && !alive('getAudioTracks')) {
+        stopMicrophone();
+        await startMicrophone();
+      }
+      if (cameraWanted && !alive('getVideoTracks')) {
+        stopCamera();
+        await startCamera();
+      }
+      announce();
+    },
+
     // Панель переписки открыли — непрочитанного больше нет.
     readChat: () => {
       if (unread === 0) return;

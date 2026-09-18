@@ -1,5 +1,6 @@
 import {generateSecret, linkToSecret} from './room-secret.js';
 import {createRoom} from './room.js';
+import {createAwake} from './awake.js';
 import {familiesFor, parseFamilyNames} from './signal/public-channels.js';
 import {renderCall} from './ui/call.js';
 import {explainFailure, showScreen} from './ui/screens.js';
@@ -121,6 +122,7 @@ const paint = state =>
       },
       hangUp: async () => {
         await room.leave();
+        await awake.stop();
         room = null;
         pinned = null;
         settings.close();
@@ -137,6 +139,12 @@ const fail = error => {
   app.querySelector('#failed-advice').textContent = advice;
   showScreen(app, 'failed');
 };
+
+// Пока идёт разговор, экрану гаснуть незачем: за погасшим экраном телефон
+// замораживает страницу вместе с соединением. А если блокировку всё же не
+// дали или человек погасил экран сам — возвращаем при пробуждении всё, что
+// телефон успел отобрать.
+const awake = createAwake({onWake: () => void room?.wake()});
 
 const enter = async secret => {
   location.hash = secret;
@@ -157,6 +165,7 @@ const enter = async secret => {
       name: myName,
       onChange: paint,
     });
+    await awake.start();
   } catch (error) {
     fail(error);
   }

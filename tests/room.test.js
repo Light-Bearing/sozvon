@@ -1044,3 +1044,76 @@ describe('реакции', () => {
     expect(room.state().reactions.has('петя')).toBe(false);
   });
 });
+
+describe('возвращение после погасшего экрана', () => {
+  // Телефон за скрытой страницей отбирает дорожки: они кончаются
+  // (readyState === 'ended'), и воскресить их нельзя — только захватить
+  // заново. Заглушённую (muted) трогать нельзя: она оживёт сама.
+  const поток = (...дорожки) => ({
+    getAudioTracks: () => дорожки.filter(t => t.kind === 'audio'),
+    getVideoTracks: () => дорожки.filter(t => t.kind === 'video'),
+  });
+  const дорожка = (kind, readyState = 'live') => ({kind, readyState, enabled: true});
+
+  it('микрофон кончился, пока экран был погашен, — захватываем заново', async () => {
+    const media = fakeMedia();
+    const {room} = await openRoom({media});
+    media.captureMicrophone.mockResolvedValue(дорожка('audio'));
+    await room.setMicrophone(true);
+    media.captureMicrophone.mockClear();
+    media.current.mockReturnValue(поток(дорожка('audio', 'ended')));
+
+    await room.wake();
+
+    expect(media.captureMicrophone).toHaveBeenCalled();
+  });
+
+  it('живую дорожку не трогаем', async () => {
+    // Перезахват ради живой дорожки — лишний поход к устройству, огонёк
+    // камеры мигает, а собеседник теряет звук на время пересогласования.
+    const media = fakeMedia();
+    const {room} = await openRoom({media});
+    media.captureMicrophone.mockResolvedValue(дорожка('audio'));
+    await room.setMicrophone(true);
+    media.captureMicrophone.mockClear();
+    media.current.mockReturnValue(поток(дорожка('audio', 'live')));
+
+    await room.wake();
+
+    expect(media.captureMicrophone).not.toHaveBeenCalled();
+  });
+
+  it('заглушённую дорожку тоже не трогаем — она оживёт сама', async () => {
+    const media = fakeMedia();
+    const {room} = await openRoom({media});
+    media.captureMicrophone.mockResolvedValue(дорожка('audio'));
+    await room.setMicrophone(true);
+    media.captureMicrophone.mockClear();
+    media.current.mockReturnValue(поток({kind: 'audio', readyState: 'live', muted: true}));
+
+    await room.wake();
+
+    expect(media.captureMicrophone).not.toHaveBeenCalled();
+  });
+
+  it('выключённую камеру не включаем обратно', async () => {
+    // Человек выключил камеру сам — возвращение из спящего экрана не
+    // повод её зажечь.
+    const media = fakeMedia();
+    const {room} = await openRoom({media});
+    media.current.mockReturnValue(поток(дорожка('video', 'ended')));
+
+    await room.wake();
+
+    expect(media.captureCamera).not.toHaveBeenCalled();
+  });
+
+  it('экран перерисовывается: состояние могло поменяться', async () => {
+    const {room, onChange} = await openRoom();
+    onChange.mockClear();
+
+    await room.wake();
+
+    expect(onChange).toHaveBeenCalled();
+  });
+});
