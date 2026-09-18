@@ -315,6 +315,10 @@ body {
 
 .stage[data-busy='no'] .tile { aspect-ratio: 3 / 4; }
 
+/* Звук собеседника живёт отдельным элементом (см. src/ui/call.js) и
+   занимать место на экране не должен. */
+.tile audio { display: none; }
+
 .tile video {
   width: 100%;
   height: 100%;

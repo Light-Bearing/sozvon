@@ -39,8 +39,16 @@ const makeTile = (id, isSelf) => {
   const video = document.createElement('video');
   video.autoplay = true;
   video.playsInline = true;
-  // Себя слушать не надо — иначе эхо и вой.
-  video.muted = isSelf;
+  // Видео всегда беззвучное, и звук собеседника идёт отдельным элементом.
+  //
+  // Так требует правило автопроигрывания: звучащее видео браузер сам не
+  // пускает, беззвучное — пускает всегда. Пока звук и картинка сидели в
+  // одном элементе, запрет на звук отнимал заодно и картинку: в Firefox
+  // человек входил в разговор и не видел собеседника вовсе. Теперь
+  // картинка есть сразу, а звук возвращается одним касанием.
+  //
+  // Себя не слушаем ни при каких условиях — иначе эхо и вой.
+  video.muted = true;
 
   const name = document.createElement('span');
   name.className = 'tile-name';
@@ -70,7 +78,12 @@ const makeTile = (id, isSelf) => {
   reaction.hidden = true;
   reaction.setAttribute('aria-hidden', 'true');
 
-  box.append(video, name, gear, pin, reaction);
+  // Своего звука нет и быть не должно, поэтому элемента для него у своей
+  // плитки просто нет.
+  const sound = isSelf ? null : document.createElement('audio');
+  if (sound) sound.autoplay = true;
+
+  box.append(video, ...(sound ? [sound] : []), name, gear, pin, reaction);
   return box;
 };
 
@@ -161,13 +174,10 @@ const askForSound = container => {
   button.hidden = blocked.size === 0;
   button.onclick = () => {
     blocked.clear();
-    for (const video of container.querySelectorAll('#tiles video')) {
-      try {
-        const playing = video.play?.();
-        if (playing && typeof playing.catch === 'function') playing.catch(() => {});
-      } catch {
-        // Не вышло — кнопка вернётся на следующей перерисовке.
-      }
+    // Касание человека снимает запрет со всей страницы разом — поэтому
+    // будим и звук, и картинку: где-то мог не пойти и беззвучный элемент.
+    for (const el of container.querySelectorAll('#tiles audio, #tiles video')) {
+      start(el)?.catch(() => {});
     }
     button.hidden = true;
   };
@@ -194,32 +204,44 @@ const showReaction = (box, reaction) => {
   spot.style.animation = '';
 };
 
+// Запуск проигрывателя. Возвращает обещание там, где браузер его даёт, и
+// ничего — там, где play() нет вовсе (jsdom).
+const start = el => {
+  try {
+    const playing = el.play?.();
+    return playing && typeof playing.catch === 'function' ? playing : null;
+  } catch {
+    return null;
+  }
+};
+
 // Доводы объектом, а не по порядку: их стало восемь, и перепутать два
 // подряд идущих булевых — вопрос времени.
 const updateTile = (box, {stream, label, isSelf, speaker, speaking, mirror, reaction, mic, cam}) => {
   const video = box.querySelector('video');
+  const sound = box.querySelector('audio');
   // Присваиваем srcObject только когда поток и вправду сменился: лишнее
   // присваивание перезапускает проигрывание.
   const source = stream ?? null;
   if (video.srcObject !== source) {
     video.srcObject = source;
-    // Браузеры телефонов не начинают играть со звуком сами по себе.
-    // Отказ — не беда: человек уже нажимал «Войти», и следующее касание
-    // экрана всё запустит. play() возвращает обещание не везде (в разметке
-    // без настоящего проигрывателя — вообще ничего), поэтому и вызов, и
-    // отказ обёрнуты.
-    try {
-      const playing = video.play?.();
-      if (playing && typeof playing.catch === 'function') {
-        playing.then(
-          () => blocked.delete(box.dataset.peer),
-          () => {
-            if (!isSelf) blocked.add(box.dataset.peer);
-          },
-        );
-      }
-    } catch {
-      // Проигрыватель не готов — следующая перерисовка попробует снова.
+    // play() возвращает обещание не везде (в разметке без настоящего
+    // проигрывателя — вообще ничего), поэтому и вызов, и отказ обёрнуты.
+    // Беззвучному видео браузеры не отказывают, так что отказ здесь — не
+    // про запрет, а про неготовность: следующая перерисовка попробует
+    // снова.
+    start(video);
+  }
+  if (sound && sound.srcObject !== source) {
+    sound.srcObject = source;
+    // А вот звук браузер сам не пустит, пока человек не коснулся страницы.
+    // Отказ запоминаем: из него вырастает кнопка «включить звук».
+    const playing = start(sound);
+    if (playing) {
+      playing.then(
+        () => blocked.delete(box.dataset.peer),
+        () => blocked.add(box.dataset.peer),
+      );
     }
   }
   // Вывод звука выбирается у проигрывателя, а не у потока, и умеют это не
@@ -227,9 +249,9 @@ const updateTile = (box, {stream, label, isSelf, speaker, speaking, mirror, reac
   // Переставляем только при смене: перерисовок теперь много (уровень звука
   // приходит несколько раз в секунду), а setSinkId на каждой из них рвал бы
   // звук.
-  if (!isSelf && video.dataset.sink !== String(speaker ?? '')) {
-    video.dataset.sink = String(speaker ?? '');
-    void playThrough(video, speaker);
+  if (sound && sound.dataset.sink !== String(speaker ?? '')) {
+    sound.dataset.sink = String(speaker ?? '');
+    void playThrough(sound, speaker);
   }
 
   // Зеркалим только своё и только по просьбе человека. Чужих — никогда:

@@ -821,3 +821,62 @@ describe('значки микрофона и камеры на плитке', ()
     expect(el.querySelector('[data-peer="петя|screen"] .tile-gear').hidden).toBe(true);
   });
 });
+
+describe('звук отдельно от картинки', () => {
+  // Правило автопроигрывания браузеров: звучащее видео само не пойдёт,
+  // беззвучное — пойдёт всегда. Пока звук и картинка сидели в одном
+  // элементе, запрет на звук отнимал заодно и картинку: в Firefox человек
+  // входил в разговор и не видел собеседника вовсе.
+  const поток = () => ({getVideoTracks: () => [], getAudioTracks: () => []});
+
+  it('у собеседника картинка и звук — разные элементы', () => {
+    const el = root();
+
+    renderCall(
+      el,
+      baseState({peers: [{peerId: 'петя', stream: поток(), screen: null, name: 'Пётр'}]}),
+      fakeActions(),
+    );
+
+    const плитка = el.querySelector('[data-peer="петя"]');
+    expect(плитка.querySelector('video')).not.toBe(null);
+    expect(плитка.querySelector('audio')).not.toBe(null);
+  });
+
+  it('видео всегда беззвучное — и своё, и чужое', () => {
+    const el = root();
+
+    renderCall(
+      el,
+      baseState({peers: [{peerId: 'петя', stream: поток(), screen: null, name: 'Пётр'}]}),
+      fakeActions(),
+    );
+
+    for (const v of el.querySelectorAll('#tiles video')) expect(v.muted).toBe(true);
+  });
+
+  it('своего звука нет и элемента для него тоже', () => {
+    // Слушать себя — это эхо и вой. Элемент, которого нет, не включат по
+    // ошибке никогда.
+    const el = root();
+
+    renderCall(el, baseState({peers: []}), fakeActions());
+
+    expect(el.querySelector('[data-peer="self"] audio')).toBe(null);
+  });
+
+  it('поток попадает в оба элемента', () => {
+    const el = root();
+    const s = поток();
+
+    renderCall(
+      el,
+      baseState({peers: [{peerId: 'петя', stream: s, screen: null, name: 'Пётр'}]}),
+      fakeActions(),
+    );
+
+    const плитка = el.querySelector('[data-peer="петя"]');
+    expect(плитка.querySelector('video').srcObject).toBe(s);
+    expect(плитка.querySelector('audio').srcObject).toBe(s);
+  });
+});
