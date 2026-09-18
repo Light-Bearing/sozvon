@@ -10,6 +10,7 @@
 
 import {playThrough} from '../devices.js';
 import {explainStep, explainTrouble} from './screens.js';
+import {HALVES, bestColumns, lastRowOffset} from '../grid.js';
 import {renderChat} from './chat.js';
 
 // Картинка есть, когда дорожка жива и не погашена хозяином.
@@ -85,6 +86,48 @@ const makeTile = (id, isSelf) => {
 
   box.append(video, ...(sound ? [sound] : []), name, gear, pin, reaction);
   return box;
+};
+
+// Размер сетки читаем наблюдателем, а не на каждой перерисовке: перерисовок
+// по нескольку в секунду, а каждое чтение размеров заставляет браузер
+// пересчитывать раскладку заново.
+let gridBox = {width: 0, height: 0};
+let gridWatcher = null;
+let gridKey = '';
+
+const applyGrid = (tiles, count) => {
+  // Не смогли померить (нет наблюдателя — например, в тестовой среде) —
+  // не мешаем: в стилях лежит запасная раскладка на auto-fit.
+  if (!(gridBox.width > 0) || !(count > 0)) return;
+
+  const columns = bestColumns({count, width: gridBox.width, height: gridBox.height});
+  const key = `${columns}|${count}`;
+  if (key === gridKey) return;
+  gridKey = key;
+
+  // Полуклетки — ради центровки неполного ряда (см. src/grid.js).
+  tiles.style.gridTemplateColumns = `repeat(${columns * HALVES}, minmax(0, 1fr))`;
+  const offset = lastRowOffset({count, columns});
+  const firstOfLastRow = count - (count % columns || columns);
+  [...tiles.children].forEach((box, i) => {
+    box.style.gridColumn =
+      offset && i === firstOfLastRow
+        ? `${offset + 1} / span ${HALVES}`
+        : `span ${HALVES}`;
+  });
+};
+
+const watchGrid = tiles => {
+  if (gridWatcher || typeof ResizeObserver !== 'function') return;
+  gridWatcher = new ResizeObserver(entries => {
+    const box = entries[0]?.contentBoxSize?.[0];
+    if (!box) return;
+    gridBox = {width: box.inlineSize, height: box.blockSize};
+    // Размер сменился — прежний выбор столбцов больше ничего не значит.
+    gridKey = '';
+    applyGrid(tiles, tiles.children.length);
+  });
+  gridWatcher.observe(tiles);
 };
 
 // Куда человек перетащил полоску участников. Живёт здесь, а не в состоянии
@@ -359,6 +402,7 @@ export const renderCall = (container, state, actions) => {
   ];
 
   const tiles = container.querySelector('#tiles');
+  watchGrid(tiles);
   const present = new Map([...tiles.children].map(box => [box.dataset.peer, box]));
 
   // Закреплённый мог уйти из разговора. Держаться за его имя нельзя: экран
@@ -412,6 +456,15 @@ export const renderCall = (container, state, actions) => {
   for (const box of present.values()) {
     blocked.delete(box.dataset.peer);
     box.remove();
+  }
+
+  // Столбцы считаем после того, как плитки на месте: раскладка зависит от
+  // их числа. Закреплённый режим сетку не использует вовсе.
+  if (pinned) {
+    tiles.style.gridTemplateColumns = '';
+    gridKey = '';
+  } else {
+    applyGrid(tiles, wanted.length);
   }
 
   askForSound(container);

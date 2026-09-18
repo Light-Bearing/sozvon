@@ -254,6 +254,10 @@ body {
   padding: var(--pad);
   padding-block-end: var(--dock-space);
   align-content: center;
+  /* Запасная раскладка на случай, если мерить нечем (нет ResizeObserver).
+     Обычно столбцы считает src/grid.js и ставит их прямо в стиль узла: CSS
+     умеет набивать ряд до отказа, но не умеет выбрать раскладку, где
+     плитка выходит крупнее всего. */
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
   grid-auto-rows: minmax(0, 1fr);
 }
