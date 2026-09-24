@@ -9,6 +9,11 @@ import os from 'node:os';
 
 const MAGIC = 0x2112a442;
 
+// --channels: только публичные каналы, без STUN. Так пробник гоняет сторож
+// на GitHub (.github/workflows/channels.yml): тип NAT машины в дата-центре
+// никому не интересен, а живы ли каналы — интересен всем.
+const CHANNELS_ONLY = process.argv.includes('--channels');
+
 const STUN_SERVERS = [
   ['stun.l.google.com', 19302],
   ['stun1.l.google.com', 19302],
@@ -114,6 +119,12 @@ function localIPv4() {
 }
 
 (async () => {
+  if (!CHANNELS_ONLY) await probeStun();
+
+  await probeChannels();
+})();
+
+async function probeStun() {
   console.log('=== 1. STUN: виден ли я снаружи и какой у меня NAT ===\n');
 
   const resolved = [];
@@ -167,6 +178,9 @@ function localIPv4() {
     }
   }
 
+}
+
+async function probeChannels() {
   console.log('\n=== 2. Публичные каналы для рукопожатия ===\n');
   const {candidatesFor, relayUrlsFor} = await import('../src/signal/relays.js');
 
@@ -181,6 +195,7 @@ function localIPv4() {
 
   let aliveInUse = 0;
   let inUse = 0;
+  const summaryLines = ['## Публичные каналы «Созвона»', ''];
   const familiesAlive = [];
   for (const [family, label] of FAMILIES) {
     const used = new Set(relayUrlsFor(family));
@@ -199,6 +214,12 @@ function localIPv4() {
     if (spare.length) console.log(`    самые быстрые запасные: ${spare.slice(0, 3).map((x) => x.url).join(', ')}`);
     console.log('');
 
+    summaryLines.push(`### ${label}`, '', '| | канал | ответ |', '|---|---|---|');
+    for (const r of results.filter((x) => x.used)) {
+      summaryLines.push(`| ${r.ok ? '✓' : '✗'} | \`${r.url}\` | ${r.ok ? `${r.ms} мс` : r.note} |`);
+    }
+    summaryLines.push('', `Запасных живых: ${spare.length}` + (spare.length ? ` — самые быстрые: ${spare.slice(0, 3).map((x) => `\`${x.url}\``).join(', ')}` : ''), '');
+
     const aliveHere = results.filter((x) => x.used && x.ok).length;
     aliveInUse += aliveHere;
     inUse += used.size;
@@ -210,4 +231,13 @@ function localIPv4() {
   if (aliveInUse < inUse) {
     console.log('        Мёртвые стоит заменить на быстрые запасные — список в src/signal/relays.js.');
   }
-})();
+
+  // Мёртвый канал среди тех, которыми пользуется приложение, — провал:
+  // сторож на GitHub покраснеет, и хозяину придёт письмо.
+  if (aliveInUse < inUse) process.exitCode = 1;
+
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    const {appendFileSync} = await import('node:fs');
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, summaryLines.join('\n') + '\n');
+  }
+}
