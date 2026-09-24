@@ -13,6 +13,7 @@ import {makeName, trimName} from './names.js';
 import {recall, remember} from './store.js';
 import {packPass, passFor, relayFromLink, serversFromPass, unpackPass} from './turn.js';
 import {relayInUse, useRelay} from './rtc.js';
+import {checkForUpdate, refreshHard} from './update.js';
 
 const app = document.querySelector('#app');
 
@@ -141,6 +142,7 @@ const paint = state => {
         useRelay([]);
         room = null;
         pinned = null;
+        void lookForUpdate();
         screensSeen = new Set();
         forgetShift();
         settings.close();
@@ -168,6 +170,8 @@ const awake = createAwake({onWake: () => void room?.wake()});
 const enter = async secret => {
   location.hash = secret;
   showScreen(app, 'call');
+  // Кнопка «обновить» посреди звонка — приглашение его оборвать.
+  app.querySelector('#update')?.setAttribute('hidden', '');
   try {
     // Пропуск к ретранслятору. У хозяина — свежий, выписанный своим ключом
     // на этот разговор (живёт полсуток). У гостя — тот, что пришёл в
@@ -285,6 +289,29 @@ if (invited) {
     note.textContent = 'Ретранслятор настроен. Дальше — просто ссылка.';
   }
 }
+
+// Сборка устарела — говорим об этом и даём обновиться одним нажатием.
+// Во время разговора молчим: обновление — это перезагрузка, а она оборвала
+// бы звонок. Скажем, когда человек положит трубку.
+const VERSION = typeof __ВЕРСИЯ__ === 'string' ? __ВЕРСИЯ__ : '';
+const updateBox = app.querySelector('#update');
+
+const lookForUpdate = async () => {
+  if (room || !updateBox) return;
+  const newer = await checkForUpdate({current: VERSION});
+  // Пока спрашивали, человек мог войти в разговор.
+  if (!newer || room) return;
+  app.querySelector('#update-text').textContent = `Вышла версия ${newer}, у вас ${VERSION}`;
+  updateBox.hidden = false;
+};
+
+app.querySelector('#update-go')?.addEventListener('click', () => void refreshHard());
+
+addEventListener('load', () => void lookForUpdate());
+// Вкладку держат открытой днями — сверяемся и когда к ней возвращаются.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') void lookForUpdate();
+});
 
 // Регистрируем после загрузки страницы, чтобы не отвлекать браузер от
 // первой отрисовки. Сам обработчик — в public/sw.js: сначала сеть, кэш

@@ -76,6 +76,13 @@
     </svg>
 
     <main id="app">
+      <!-- Сборка устарела — говорим прямо и даём обновиться одним нажатием.
+           Без этого «сброс кэша помогает» оставалось загадкой: человек был
+           уверен, что обновился, и проверял исправления, которых у него нет. -->
+      <div id="update" class="update" role="status" hidden>
+        <span id="update-text"></span>
+        <button id="update-go" class="update-go" type="button">Обновить</button>
+      </div>
       <section id="screen-start" class="pane">
         <p class="wordmark">созвон</p>
         <div class="pane-body">
