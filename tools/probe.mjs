@@ -18,15 +18,24 @@ const STUN_SERVERS = [
   ['stun.sipnet.net', 3478],
 ];
 
-const WS_TARGETS = [
-  ['nostr-релей', 'wss://relay.damus.io'],
-  ['nostr-релей', 'wss://nos.lol'],
-  ['nostr-релей', 'wss://relay.nostr.band'],
-  ['nostr-релей', 'wss://relay.snort.social'],
-  ['mqtt-брокер', 'wss://broker.emqx.io:8084/mqtt'],
-  ['mqtt-брокер', 'wss://test.mosquitto.org:8081/mqtt'],
-  ['mqtt-брокер', 'wss://broker.hivemq.com:8884/mqtt'],
+// Каналы берём из самого приложения, а не держим свой список. Свой был, и
+// он разошёлся с приложением: пробник годами мерил одни адреса, пока
+// приложение ходило в другие, и живые каналы, которыми пользовались люди,
+// не проверял ни разу.
+const FAMILIES = [
+  ['nostr', 'nostr-релей'],
+  ['mqtt', 'mqtt-брокер'],
 ];
+
+// mqtt поверх WebSocket обязан объявлять подпротокол «mqtt»: без него
+// mosquitto и emqx рвут соединение сразу. Пробник, открывавший их без
+// подпротокола, записывал живые брокеры в мёртвые — а приложение, которое
+// подпротокол ставит, всё это время ими исправно пользовалось.
+const SUBPROTOCOL = {mqtt: 'mqtt'};
+
+// Одна неудача ничего не значит: снятый на миг релей отвечает со второго
+// раза. Мёртвым считаем только то, что не ответило ни разу из стольких.
+const ATTEMPTS = 2;
 
 function bindingRequest() {
   const buf = Buffer.alloc(20);
@@ -80,7 +89,7 @@ function askStun(sock, ip, port, timeout = 2500) {
   });
 }
 
-function tryWs(url, timeout = 7000) {
+function tryWs(url, protocol, timeout = 7000) {
   return new Promise((resolve) => {
     const started = Date.now();
     let ws;
@@ -89,7 +98,8 @@ function tryWs(url, timeout = 7000) {
       resolve({ ok, ms: Date.now() - started, note });
     };
     const timer = setTimeout(() => done(false, 'молчит'), timeout);
-    try { ws = new WebSocket(url); } catch (e) { clearTimeout(timer); return done(false, e.message); }
+    try { ws = protocol ? new WebSocket(url, protocol) : new WebSocket(url); }
+    catch (e) { clearTimeout(timer); return done(false, e.message); }
     ws.onopen = () => { clearTimeout(timer); done(true, ''); };
     ws.onerror = (e) => { clearTimeout(timer); done(false, (e && e.message) || 'отказ'); };
     ws.onclose = (e) => { clearTimeout(timer); if (Date.now() - started < timeout) done(false, `закрыт ${e.code || ''}`.trim()); };
@@ -158,25 +168,46 @@ function localIPv4() {
   }
 
   console.log('\n=== 2. Публичные каналы для рукопожатия ===\n');
-  const wsResults = await Promise.all(WS_TARGETS.map(async ([kind, url]) => {
-    const r = await tryWs(url);
-    return { kind, url, ...r };
-  }));
-  for (const r of wsResults) {
-    const mark = r.ok ? '✓' : '✗';
-    const tail = r.ok ? `${r.ms} мс` : r.note;
-    console.log(`  ${mark} ${r.kind.padEnd(16)} ${r.url.padEnd(46)} ${tail}`);
+  const {candidatesFor, relayUrlsFor} = await import('../src/signal/relays.js');
+
+  const tryHard = async (url, protocol) => {
+    let last;
+    for (let i = 0; i < ATTEMPTS; i++) {
+      last = await tryWs(url, protocol);
+      if (last.ok) return last;
+    }
+    return last;
+  };
+
+  let aliveInUse = 0;
+  let inUse = 0;
+  const familiesAlive = [];
+  for (const [family, label] of FAMILIES) {
+    const used = new Set(relayUrlsFor(family));
+    const all = candidatesFor(family);
+    const results = await Promise.all(
+      all.map(async (url) => ({url, used: used.has(url), ...(await tryHard(url, SUBPROTOCOL[family]))})),
+    );
+
+    console.log(`  ${label} — приложение держит ${used.size} из ${all.length} кандидатов:`);
+    for (const r of results.filter((x) => x.used)) {
+      console.log(`    ${r.ok ? '✓' : '✗'} ${r.url.padEnd(46)} ${r.ok ? `${r.ms} мс` : r.note}`);
+    }
+    const spare = results.filter((x) => !x.used && x.ok).sort((a, b) => a.ms - b.ms);
+    const deadSpare = results.filter((x) => !x.used && !x.ok).length;
+    console.log(`    запасных живых: ${spare.length}, запасных мёртвых: ${deadSpare}`);
+    if (spare.length) console.log(`    самые быстрые запасные: ${spare.slice(0, 3).map((x) => x.url).join(', ')}`);
+    console.log('');
+
+    const aliveHere = results.filter((x) => x.used && x.ok).length;
+    aliveInUse += aliveHere;
+    inUse += used.size;
+    if (aliveHere) familiesAlive.push(family);
   }
 
-  const byKind = {};
-  for (const r of wsResults) (byKind[r.kind] ||= []).push(r.ok);
-  console.log('');
-  for (const [kind, arr] of Object.entries(byKind)) {
-    const n = arr.filter(Boolean).length;
-    console.log(`  ${kind}: живых ${n} из ${arr.length}`);
+  console.log(`  ИТОГ: из каналов, которыми пользуется приложение, живых ${aliveInUse} из ${inUse};`);
+  console.log(`        семейств, в которых есть хоть один живой, — ${familiesAlive.length} из ${FAMILIES.length}.`);
+  if (aliveInUse < inUse) {
+    console.log('        Мёртвые стоит заменить на быстрые запасные — список в src/signal/relays.js.');
   }
-  const alive = wsResults.filter((r) => r.ok).length;
-  const kindsAlive = Object.values(byKind).filter((a) => a.some(Boolean)).length;
-  console.log('');
-  console.log(`  ИТОГ: живых каналов ${alive}, независимых семейств ${kindsAlive} из ${Object.keys(byKind).length}.`);
 })();
