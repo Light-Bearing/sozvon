@@ -232,6 +232,27 @@
               </span>
             </label>
 
+            <!-- Распознавание — в этом браузере, по своему кадру. Наружу
+                 уходят только выводы: где лицо и какой жест. Выключено по
+                 умолчанию: стоит процессора и мегабайт при первом включении. -->
+            <label class="switch">
+              <input id="face-follow" type="checkbox" />
+              <span class="switch-box" aria-hidden="true"></span>
+              <span class="switch-text">
+                Держать лицо в кадре
+                <span class="switch-note" id="face-follow-note">Кадр сам сдвигается к вашему лицу — и у вас, и у собеседников. Распознаётся здесь, в браузере; при первом включении скачается около 4 МБ</span>
+              </span>
+            </label>
+
+            <label class="switch">
+              <input id="memes" type="checkbox" />
+              <span class="switch-box" aria-hidden="true"></span>
+              <span class="switch-text">
+                Мемы по жестам
+                <span class="switch-note" id="memes-note">👍 ✌️ ✋ ☝️ 🤟 перед камерой — и на вашей плитке у всех мем. Распознаётся здесь, в браузере; при первом включении скачается около 12 МБ</span>
+              </span>
+            </label>
+
             <p class="sheet-flow" id="flow" hidden></p>
 
             <details class="fold">

@@ -11,6 +11,7 @@
 import {playThrough} from '../devices.js';
 import {explainStep, explainTrouble} from './screens.js';
 import {HALVES, bestColumns, lastRowOffset} from '../grid.js';
+import {MEMES, panFor} from '../vision-logic.js';
 import {renderChat} from './chat.js';
 
 // Картинка есть, когда дорожка жива и не погашена хозяином.
@@ -84,7 +85,20 @@ const makeTile = (id, isSelf) => {
   const sound = isSelf ? null : document.createElement('audio');
   if (sound) sound.autoplay = true;
 
-  box.append(video, ...(sound ? [sound] : []), name, gear, pin, reaction);
+  // Мем по жесту: крупный значок и подпись, как на картинках-мемах.
+  // Содержимое — только из нашего списка (MEMES): из сети приходит лишь
+  // название жеста, и незнакомое сюда не доходит.
+  const meme = document.createElement('span');
+  meme.className = 'tile-meme';
+  meme.hidden = true;
+  meme.setAttribute('aria-hidden', 'true');
+  const memeEmoji = document.createElement('span');
+  memeEmoji.className = 'tile-meme-emoji';
+  const memeCaption = document.createElement('span');
+  memeCaption.className = 'tile-meme-caption';
+  meme.append(memeEmoji, memeCaption);
+
+  box.append(video, ...(sound ? [sound] : []), name, gear, pin, reaction, meme);
   return box;
 };
 
@@ -260,7 +274,44 @@ const start = el => {
 
 // Доводы объектом, а не по порядку: их стало восемь, и перепутать два
 // подряд идущих булевых — вопрос времени.
-const updateTile = (box, {stream, label, isSelf, speaker, speaking, mirror, reaction, mic, cam}) => {
+const showMeme = (box, meme) => {
+  const spot = box.querySelector('.tile-meme');
+  if (!spot) return;
+  const known = meme && MEMES[meme.name];
+  if (!known) {
+    spot.hidden = true;
+    delete spot.dataset.at;
+    return;
+  }
+  if (spot.dataset.at === String(meme.at)) return;
+  spot.dataset.at = String(meme.at);
+  spot.querySelector('.tile-meme-emoji').textContent = known.emoji;
+  spot.querySelector('.tile-meme-caption').textContent = known.caption;
+  spot.hidden = false;
+  // Сброс движения — как у реакции: второй подряд мем иначе появился бы
+  // неподвижным.
+  spot.style.animation = 'none';
+  void spot.offsetWidth;
+  spot.style.animation = '';
+};
+
+// Держим лицо в центре плитки: сдвигаем обрезку туда, где оно в кадре.
+// Размеры читаем только у плиток, где лицо известно, — остальных не трогаем.
+const frameFace = (box, video, face) => {
+  const pan = face
+    ? panFor({
+        face,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        boxWidth: box.clientWidth,
+        boxHeight: box.clientHeight,
+      })
+    : null;
+  const value = pan ? `${pan.x}% ${pan.y}%` : '';
+  if (video.style.objectPosition !== value) video.style.objectPosition = value;
+};
+
+const updateTile = (box, {stream, label, isSelf, speaker, speaking, mirror, reaction, mic, cam, face, meme}) => {
   const video = box.querySelector('video');
   const sound = box.querySelector('audio');
   // Присваиваем srcObject только когда поток и вправду сменился: лишнее
@@ -311,6 +362,9 @@ const updateTile = (box, {stream, label, isSelf, speaker, speaking, mirror, reac
   if (name.textContent !== label) name.textContent = label;
 
   showReaction(box, reaction);
+  showMeme(box, meme);
+  // Экран в кадр не наводим: его вписываем целиком, обрезки там нет.
+  if (!box.dataset.peer.endsWith('|screen')) frameFace(box, video, face);
 
   // null — «человек ещё не сказал о себе»: соврать «у него выключен
   // микрофон» хуже, чем промолчать. Экран о себе не рассказывает вовсе.
@@ -384,16 +438,17 @@ export const renderCall = (container, state, actions) => {
       isSelf: true,
       mic: state.mic,
       cam: state.cam,
+      face: state.selfFace,
     },
     // У плитки экрана значков нет: микрофон и камера — про человека, а не
     // про то, что он показывает.
     ...(state.selfScreen
       ? [{id: 'self|screen', stream: state.selfScreen, label: 'Ваш экран', isSelf: true}]
       : []),
-    ...state.peers.flatMap(({peerId, stream, screen, name, mic, cam}, i) => {
+    ...state.peers.flatMap(({peerId, stream, screen, name, mic, cam, face}, i) => {
       const кто = nameFor(name, i, state.peers.length);
       return [
-        {id: peerId, stream, label: кто, isSelf: false, mic, cam},
+        {id: peerId, stream, label: кто, isSelf: false, mic, cam, face},
         ...(screen
           ? [{id: `${peerId}|screen`, stream: screen, label: `Экран · ${кто}`, isSelf: false}]
           : []),
@@ -417,7 +472,7 @@ export const renderCall = (container, state, actions) => {
   applyShift(tiles);
   let small = 0;
 
-  for (const {id, stream, label, isSelf, mic, cam} of wanted) {
+  for (const {id, stream, label, isSelf, mic, cam, face} of wanted) {
     const box = present.get(id) ?? makeTile(id, isSelf);
     present.delete(id);
     updateTile(box, {
@@ -430,6 +485,8 @@ export const renderCall = (container, state, actions) => {
       reaction: state.reactions?.get(id),
       mic,
       cam,
+      face,
+      meme: state.memes?.get(id),
     });
     // Вставляем ТОЛЬКО новые. append() для узла, который уже лежит здесь,
     // означает «вынуть и вставить заново» — а для <video> это перезапуск

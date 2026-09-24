@@ -1,4 +1,5 @@
 import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {defineConfig} from 'vite';
 
 // Версия видна в настройках. Без неё нельзя отличить «исправление не
@@ -24,9 +25,38 @@ const versionFile = () => ({
   },
 });
 
+// Среда исполнения MediaPipe — рядом со сборкой, а не с серверов Google.
+// Иначе каждый, кто включит мемы или наводку на лицо, отдавал бы Google
+// свой адрес ради скачивания. Берём только два варианта: с SIMD и без —
+// библиотека сама выберет, какой умеет браузер. Грузится лениво, только
+// когда настройку включили.
+const MEDIAPIPE_DIR = 'node_modules/@mediapipe/tasks-vision/wasm';
+const MEDIAPIPE_FILES = [
+  'vision_wasm_internal.js',
+  'vision_wasm_internal.wasm',
+  'vision_wasm_nosimd_internal.js',
+  'vision_wasm_nosimd_internal.wasm',
+];
+const mediapipeRuntime = () => ({
+  name: 'sozvon-mediapipe',
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      const name = req.url?.split('?')[0].match(/\/mediapipe\/([^/]+)$/)?.[1];
+      if (!name || !MEDIAPIPE_FILES.includes(name)) return next();
+      res.setHeader('Content-Type', name.endsWith('.wasm') ? 'application/wasm' : 'text/javascript');
+      res.end(readFileSync(join(MEDIAPIPE_DIR, name)));
+    });
+  },
+  generateBundle() {
+    for (const name of MEDIAPIPE_FILES) {
+      this.emitFile({type: 'asset', fileName: `mediapipe/${name}`, source: readFileSync(join(MEDIAPIPE_DIR, name))});
+    }
+  },
+});
+
 export default defineConfig({
   define: {__ВЕРСИЯ__: JSON.stringify(version)},
-  plugins: [versionFile()],
+  plugins: [versionFile(), mediapipeRuntime()],
   // Относительный путь обязателен: на GitHub Pages сайт лежит не в корне домена.
   base: './',
   build: {target: 'es2022'},

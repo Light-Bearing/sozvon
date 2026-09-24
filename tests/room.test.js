@@ -765,7 +765,7 @@ describe('имена участников', () => {
     connection.channel('name').onMessage('Сонная Выдра', {peerId: 'петя'});
 
     expect(room.state().peers).toEqual([
-      {peerId: 'петя', stream: null, screen: null, name: 'Сонная Выдра', mic: null, cam: null},
+      {peerId: 'петя', stream: null, screen: null, name: 'Сонная Выдра', mic: null, cam: null, face: null},
     ]);
   });
 
@@ -901,6 +901,7 @@ describe('показ экрана', () => {
       name: null,
       mic: null,
       cam: null,
+      face: null,
     });
   });
 
@@ -1288,5 +1289,86 @@ describe('попрощавшегося убираем сразу', () => {
     connection.channel('bye').onMessage(true, {peerId: 'кто-то'});
 
     expect(room.state().notice).toBe(null);
+  });
+});
+
+describe('лицо в кадре и мемы по жестам', () => {
+  it('где лицо у собеседника — доходит до его плитки', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+
+    connection.channel('face').onMessage({x: 0.3, y: 0.4}, {peerId: 'петя'});
+
+    expect(room.state().peers[0].face).toEqual({x: 0.3, y: 0.4});
+  });
+
+  it('мусор вместо координат лица отбрасывается', async () => {
+    // Числа пойдут в стиль плитки — мусору там не место.
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('face').onMessage({x: 0.3, y: 0.4}, {peerId: 'петя'});
+
+    connection.channel('face').onMessage({x: 'drop table', y: 1}, {peerId: 'петя'});
+
+    expect(room.state().peers[0].face).toBe(null);
+  });
+
+  it('своё лицо уходит собеседникам и сразу — новичку', async () => {
+    const {room, connection} = await openRoom();
+
+    room.shareFace({x: 0.6, y: 0.5});
+    connection.handlers.onPeerJoin('поздний');
+
+    expect(connection.channel('face').sent).toEqual([{x: 0.6, y: 0.5}, {x: 0.6, y: 0.5}]);
+    expect(room.state().selfFace).toEqual({x: 0.6, y: 0.5});
+  });
+
+  it('наводку выключили — собеседникам уходит null, чтобы вернули обычную обрезку', async () => {
+    const {room, connection} = await openRoom();
+    room.shareFace({x: 0.6, y: 0.5});
+
+    room.shareFace(null);
+
+    expect(connection.channel('face').sent.at(-1)).toBe(null);
+  });
+
+  it('свой мем — на своей плитке и у всех', async () => {
+    const {room, connection} = await openRoom();
+
+    room.sendMeme('Thumb_Up');
+
+    expect(room.state().memes.get('self')).toEqual(expect.objectContaining({name: 'Thumb_Up'}));
+    expect(connection.channel('meme').sent).toEqual(['Thumb_Up']);
+  });
+
+  it('чужой мем — на плитке того, кто показал, и гаснет сам', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+
+    connection.channel('meme').onMessage('Victory', {peerId: 'петя'});
+    expect(room.state().memes.get('петя')).toEqual(expect.objectContaining({name: 'Victory'}));
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(room.state().memes.has('петя')).toBe(false);
+  });
+
+  it('незнакомое название мемом не становится', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+
+    connection.channel('meme').onMessage('<img src=x onerror=alert(1)>', {peerId: 'петя'});
+
+    expect(room.state().memes.has('петя')).toBe(false);
+  });
+
+  it('ушедший уносит и лицо, и мем', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('face').onMessage({x: 0.3, y: 0.4}, {peerId: 'петя'});
+    connection.channel('meme').onMessage('Victory', {peerId: 'петя'});
+
+    connection.handlers.onPeerLeave('петя');
+
+    expect(room.state().memes.has('петя')).toBe(false);
   });
 });

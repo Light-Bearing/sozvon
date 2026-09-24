@@ -2,7 +2,7 @@
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {createSettings, fillPicker, renderDevices} from '../src/ui/settings.js';
+import {createSettings, fillPicker, renderDevices, showVisionFailure} from '../src/ui/settings.js';
 
 const HTML = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
 
@@ -274,5 +274,38 @@ describe('переключатель зеркала', () => {
 
     expect(actions.setMirror).toHaveBeenCalledWith(true);
     expect(взять()).toBe(true);
+  });
+});
+
+describe('распознавание не заработало — переключатель не врёт', () => {
+  const разметка = () => {
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <input id="face-follow" type="checkbox" checked>
+      <span id="face-follow-note">было</span>
+      <input id="memes" type="checkbox" checked>
+      <span id="memes-note">было</span>`;
+    return root;
+  };
+
+  it('не скачалось — снимаем галочку и советуем сеть', () => {
+    const root = разметка();
+
+    showVisionFailure(root, 'gestures', 'load');
+
+    expect(root.querySelector('#memes').checked).toBe(false);
+    expect(root.querySelector('#memes-note').textContent).toMatch(/проверьте сеть/);
+    // Соседний переключатель не трогаем.
+    expect(root.querySelector('#face-follow').checked).toBe(true);
+  });
+
+  it('не заработало на устройстве — про сеть не говорим: повтор не поможет', () => {
+    const root = разметка();
+
+    showVisionFailure(root, 'face', 'run');
+
+    expect(root.querySelector('#face-follow').checked).toBe(false);
+    expect(root.querySelector('#face-follow-note').textContent).toMatch(/устройстве не работает/);
+    expect(root.querySelector('#face-follow-note').textContent).not.toMatch(/сеть/);
   });
 });

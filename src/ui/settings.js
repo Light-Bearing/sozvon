@@ -47,11 +47,30 @@ export const renderDevices = (root, devices, chosen, speakerSupported = canChoos
   root.querySelector('#settings-note').hidden = devices.named || !hasAny;
 };
 
+// Распознавание не загрузилось (нет сети, браузер не потянул) — галочку
+// снимаем и говорим почему, чтобы переключатель не врал, будто всё работает.
+//
+// Причин две, и действия у них разные: не скачалось — это сеть, можно
+// попробовать снова; не заработало — это устройство, и повтор не поможет.
+export const showVisionFailure = (root, kind, reason = 'load') => {
+  const box = root.querySelector(kind === 'face' ? '#face-follow' : '#memes');
+  const note = root.querySelector(kind === 'face' ? '#face-follow-note' : '#memes-note');
+  if (box) box.checked = false;
+  if (note) {
+    note.textContent =
+      reason === 'run'
+        ? 'На этом устройстве не работает: браузер не даёт графики, без которой распознавание не видит кадр'
+        : 'Не загрузилось — проверьте сеть и включите снова';
+  }
+};
+
 export const createSettings = (root, actions) => {
   const panel = root.querySelector('#settings');
   const nameInput = root.querySelector('#name-input');
 
   const mirror = root.querySelector('#mirror');
+  const faceFollow = root.querySelector('#face-follow');
+  const memes = root.querySelector('#memes');
   const relayAddress = root.querySelector('#relay-address');
   const relaySecret = root.querySelector('#relay-secret');
 
@@ -75,6 +94,8 @@ export const createSettings = (root, actions) => {
     nameInput.placeholder = actions.nameHint();
     nameInput.value = actions.currentName();
     if (mirror) mirror.checked = Boolean(actions.currentMirror?.());
+    if (faceFollow) faceFollow.checked = Boolean(actions.currentVision?.().face);
+    if (memes) memes.checked = Boolean(actions.currentVision?.().gestures);
     const relay = actions.currentRelay?.() ?? {};
     relayAddress.value = relay.address ?? '';
     relaySecret.value = relay.secret ?? '';
@@ -104,6 +125,8 @@ export const createSettings = (root, actions) => {
   // Ретранслятор применяется со следующего звонка: лёд узнаёт о серверах
   // при создании соединения, и менять их у живого смысла нет.
   if (mirror) mirror.onchange = () => actions.setMirror?.(mirror.checked);
+  if (faceFollow) faceFollow.onchange = () => actions.setVision?.({face: faceFollow.checked});
+  if (memes) memes.onchange = () => actions.setVision?.({gestures: memes.checked});
 
   relayAddress.oninput = () => actions.setRelay?.('address', relayAddress.value);
   relaySecret.oninput = () => actions.setRelay?.('secret', relaySecret.value);

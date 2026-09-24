@@ -7,7 +7,8 @@ import {followScreens} from './focus.js';
 import {explainFailure, showScreen} from './ui/screens.js';
 import {renderDiagnostics} from './ui/diagnostics.js';
 import {bindHotkeys} from './ui/hotkeys.js';
-import {createSettings} from './ui/settings.js';
+import {createSettings, showVisionFailure} from './ui/settings.js';
+import {createVision} from './vision.js';
 import {createChat} from './ui/chat.js';
 import {makeName, trimName} from './names.js';
 import {recall, remember} from './store.js';
@@ -63,6 +64,23 @@ let mirror = recall('зеркало') === 'да';
 // между звонками — участники в каждом свои.
 let pinned = null;
 
+// Наводка на лицо и мемы по жестам. Выключены, пока человек сам не включит:
+// распознавание стоит процессора и мегабайт при первом включении.
+const vision = {
+  face: recall('лицо-в-кадре') === 'да',
+  gestures: recall('мемы') === 'да',
+};
+
+const seer = createVision({
+  onFace: face => room?.shareFace(face),
+  onGesture: name => room?.sendMeme(name),
+  onFailed: (kind, reason) => {
+    vision[kind] = false;
+    remember(kind === 'face' ? 'лицо-в-кадре' : 'мемы', null);
+    showVisionFailure(app, kind, reason);
+  },
+});
+
 const saveName = next => {
   given = trimName(next);
   myName = given ?? HINT;
@@ -112,6 +130,9 @@ const invitedPass = unpackPass(passFromLink(location.href));
 let screensSeen = new Set();
 
 const paint = state => {
+  // Своя камера могла включиться, выключиться или смениться — распознаватель
+  // смотрит на тот поток, что есть сейчас.
+  seer.setStream(state.self);
   ({pinned, seen: screensSeen} = followScreens({
     peers: state.peers,
     selfScreen: state.selfScreen,
@@ -139,6 +160,7 @@ const paint = state => {
       hangUp: async () => {
         await room.leave();
         await awake.stop();
+        seer.stop();
         useRelay([]);
         room = null;
         pinned = null;
@@ -196,6 +218,7 @@ const enter = async secret => {
       onChange: paint,
     });
     await awake.start();
+    seer.setWanted(vision);
   } catch (error) {
     fail(error);
   }
@@ -213,6 +236,15 @@ const settings = createSettings(app, {
   nameHint: () => HINT,
   currentDevices: () => picked,
   currentMirror: () => mirror,
+  currentVision: () => vision,
+  setVision: part => {
+    Object.assign(vision, part);
+    remember('лицо-в-кадре', vision.face ? 'да' : null);
+    remember('мемы', vision.gestures ? 'да' : null);
+    // Вне разговора модели не грузим: незачем качать мегабайты, пока
+    // человек только настраивает.
+    if (room) seer.setWanted(vision);
+  },
   setMirror: on => {
     mirror = Boolean(on);
     remember('зеркало', mirror ? 'да' : null);

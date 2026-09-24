@@ -49,6 +49,20 @@ const chrome = spawn(
   {stdio: 'ignore'},
 );
 
+// Упади проверка на полпути — её Chrome остался бы висеть на том же порту,
+// и следующий прогон молча подключился бы к нему, со старыми флагами и
+// старым состоянием. Так однажды и вышло: полчаса искал поломку, которой не
+// было. Поэтому браузер убираем при любом исходе.
+process.on('exit', () => chrome.kill());
+process.on('uncaughtException', error => {
+  console.log(`✗ проверка упала сама: ${error?.message ?? error}`);
+  закончить(2);
+});
+process.on('unhandledRejection', error => {
+  console.log(`✗ проверка упала сама: ${error?.message ?? error}`);
+  закончить(2);
+});
+
 const закончить = code => {
   chrome.kill();
   try {

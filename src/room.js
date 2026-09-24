@@ -11,6 +11,7 @@ import {makeName, trimName} from './names.js';
 import {createFlowTracker} from './flow.js';
 import {createChatLog, isReaction, trimText} from './chat.js';
 import {reviveOnDrop} from './revive.js';
+import {cleanFace, cleanMeme} from './vision-logic.js';
 
 const STATS_EVERY_MS = 2_000;
 
@@ -102,6 +103,8 @@ export const createRoom = async ({
     messages: chat.all(),
     unread,
     reactions: new Map(reactions),
+    memes: new Map(memes),
+    selfFace,
     notice,
     devices: media.chosen?.() ?? {microphone: null, camera: null},
     peers: [...peers.entries()].map(([peerId, stream]) => ({
@@ -111,6 +114,7 @@ export const createRoom = async ({
       name: names.get(peerId) ?? null,
       mic: peerMedia.get(peerId)?.mic ?? null,
       cam: peerMedia.get(peerId)?.cam ?? null,
+      face: peerFace.get(peerId) ?? null,
     })),
     // Свой экран — чтобы человек видел, что именно показывает.
     selfScreen: media.screen?.() ?? null,
@@ -137,6 +141,8 @@ export const createRoom = async ({
   let chatChannel = null;
   let screensChannel = null;
   let mediaChannel = null;
+  let faceChannel = null;
+  let memeChannel = null;
   let byeChannel = null;
 
   // Кто попрощался. Уходя сам, человек говорит об этом по каналу данных, —
@@ -157,6 +163,8 @@ export const createRoom = async ({
     names.delete(peerId);
     peerMedia.delete(peerId);
     forgetReaction(peerId);
+    peerFace.delete(peerId);
+    forgetMeme(peerId);
   };
 
   // Короткая строка о том, кто пропал и как. Живёт секунды, как реакция.
@@ -207,6 +215,36 @@ export const createRoom = async ({
     );
   };
 
+  // Где у собеседника лицо — чтобы держать его в центре плитки (см.
+  // src/vision-logic.js, panFor). Своё — тоже: и на своей плитке, и чтобы
+  // сказать новичку сразу, а не через пару секунд.
+  const peerFace = new Map();
+  let selfFace = null;
+
+  // Мемы по жестам: как реакции, живут секунды и ключуются именем плитки.
+  const MEME_MS = 3000;
+  const memes = new Map();
+  const memeTimers = new Map();
+
+  const showMeme = (id, name) => {
+    clearTimeout(memeTimers.get(id));
+    memes.set(id, {name, at: Date.now()});
+    memeTimers.set(
+      id,
+      setTimeout(() => {
+        memeTimers.delete(id);
+        memes.delete(id);
+        announce();
+      }, MEME_MS),
+    );
+  };
+
+  const forgetMeme = id => {
+    clearTimeout(memeTimers.get(id));
+    memeTimers.delete(id);
+    memes.delete(id);
+  };
+
   const forgetReaction = id => {
     clearTimeout(fading.get(id));
     fading.delete(id);
@@ -249,6 +287,9 @@ export const createRoom = async ({
           // но не будет знать, что это экран, а не забытая плитка.
           void screensChannel?.send(screenWanted);
           void mediaChannel?.send({mic: microphoneWanted, cam: cameraWanted});
+          // Где наше лицо — сразу, а не через пару секунд: иначе новичок
+          // первые мгновения видел бы нас обрезанными как попало.
+          if (selfFace) void faceChannel?.send(selfFace);
           announce();
         },
         onPeerLeave: peerId => {
@@ -339,6 +380,31 @@ export const createRoom = async ({
       tell(`${names.get(peerId) ?? 'Собеседник'} больше не в разговоре`);
       gone.add(peerId);
       forget(peerId);
+      announce();
+    };
+  }
+
+  // Где лицо у собеседника. Числа из сети — только через cleanFace: они
+  // пойдут в стиль плитки, и мусору там не место.
+  faceChannel = typeof connection.action === 'function' ? connection.action('face') : null;
+  if (faceChannel) {
+    faceChannel.onMessage = (value, {peerId}) => {
+      if (gone.has(peerId)) return;
+      const face = cleanFace(value);
+      if (face) peerFace.set(peerId, face);
+      else peerFace.delete(peerId);
+      announce();
+    };
+  }
+
+  // Мем по жесту. Название — только из знакомых (cleanMeme): иначе
+  // собеседник мог бы прислать что угодно под видом мема.
+  memeChannel = typeof connection.action === 'function' ? connection.action('meme') : null;
+  if (memeChannel) {
+    memeChannel.onMessage = (value, {peerId}) => {
+      const name = cleanMeme(value);
+      if (!name || gone.has(peerId) || !peers.has(peerId)) return;
+      showMeme(peerId, name);
       announce();
     };
   }
@@ -742,6 +808,24 @@ export const createRoom = async ({
     // Прощание без ожидания — для закрытия вкладки: там ждать нельзя, браузер
     // уже разбирает страницу. Сообщение по каналу данных уходит сразу, и
     // обычно успевает раньше, чем соединение закроется.
+    // Где своё лицо в кадре — говорит распознаватель (src/vision.js).
+    // null — лица нет или наводку выключили: собеседники вернут обычную
+    // обрезку.
+    shareFace: face => {
+      selfFace = face ? cleanFace(face) : null;
+      void faceChannel?.send(selfFace);
+      announce();
+    },
+
+    // Показанный жест стал мемом — у себя на плитке и у всех.
+    sendMeme: name => {
+      const clean = cleanMeme(name);
+      if (!clean) return;
+      showMeme('self', clean);
+      void memeChannel?.send(clean);
+      announce();
+    },
+
     sayBye: () => {
       try {
         void Promise.resolve(byeChannel?.send(true)).catch(() => {});
@@ -764,6 +848,7 @@ export const createRoom = async ({
       clearInterval(timer);
       clearInterval(speakingTimer);
       for (const id of [...fading.keys()]) forgetReaction(id);
+      for (const id of [...memeTimers.keys()]) forgetMeme(id);
       stopLevelMeter();
       media.stop();
       await connection.leave();
