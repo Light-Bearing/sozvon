@@ -10,7 +10,8 @@
     "test": "vitest run",
     "dev": "vite --host",
     "build": "vite build",
-    "build:single": "vite build --config vite.config.single.js"
+    "build:single": "vite build --config vite.config.single.js",
+    "check:call": "node tools/call-check.mjs"
   },
   "keywords": [],
   "author": "",
