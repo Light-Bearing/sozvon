@@ -1,6 +1,6 @@
 {
   "name": "sozvon",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Видео и голос напрямую между устройствами. Без серверной части, без аккаунтов, без оплаты.",
   "main": "index.js",
   "directories": {
@@ -19,6 +19,7 @@
   "type": "module",
   "private": "true",
   "dependencies": {
+    "@mediapipe/tasks-vision": "1.0.1",
     "@trystero-p2p/mqtt": "0.25.4",
     "@trystero-p2p/nostr": "0.25.4"
   },
