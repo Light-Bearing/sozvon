@@ -308,6 +308,10 @@ const lookForUpdate = async () => {
 app.querySelector('#update-go')?.addEventListener('click', () => void refreshHard());
 
 addEventListener('load', () => void lookForUpdate());
+
+// Закрыть вкладку — тоже уйти самому. Без прощания остальные прочли бы
+// «связь прервалась» и ждали бы, что человек вернётся.
+addEventListener('pagehide', () => room?.sayBye?.());
 // Вкладку держат открытой днями — сверяемся и когда к ней возвращаются.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') void lookForUpdate();

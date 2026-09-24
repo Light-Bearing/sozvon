@@ -469,6 +469,14 @@ export const renderCall = (container, state, actions) => {
 
   askForSound(container);
 
+  const notice = container.querySelector('#notice');
+  if (notice) {
+    const текст = state.notice?.text ?? '';
+    // Только текстом: имя собеседника — чужая строка из сети.
+    if (notice.textContent !== текст) notice.textContent = текст;
+    notice.hidden = !текст;
+  }
+
   // Про камеры, выключенные лестницей, молчать нельзя: тёмные плитки
   // выглядят как поломка, а это всего лишь плата за многолюдность.
   const mode = container.querySelector('#mode');

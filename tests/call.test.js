@@ -914,3 +914,26 @@ describe('строка про лестницу качества на экран�
     expect(el.querySelector('#mode').hidden).toBe(true);
   });
 });
+
+describe('строка «кто пропал»', () => {
+  it('показывается и прячется вместе с состоянием', () => {
+    const el = root();
+
+    renderCall(el, baseState({notice: {text: 'Пётр — связь прервалась', at: 1}}), fakeActions());
+    expect(el.querySelector('#notice').hidden).toBe(false);
+    expect(el.querySelector('#notice').textContent).toBe('Пётр — связь прервалась');
+
+    renderCall(el, baseState({notice: null}), fakeActions());
+    expect(el.querySelector('#notice').hidden).toBe(true);
+  });
+
+  it('имя собеседника — только текстом', () => {
+    // Имя приходит из сети: присланный собеседником «<img onerror=…>» должен
+    // остаться буквами на экране.
+    const el = root();
+
+    renderCall(el, baseState({notice: {text: '<img src=x onerror=alert(1)> — связь прервалась', at: 1}}), fakeActions());
+
+    expect(el.querySelector('#notice img')).toBe(null);
+  });
+});

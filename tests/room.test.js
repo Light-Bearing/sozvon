@@ -1181,3 +1181,112 @@ describe('возвращение после погасшего экрана', ()
     expect(onChange).toHaveBeenCalled();
   });
 });
+
+describe('кто пропал и как', () => {
+  it('попрощался и ушёл — «больше не в разговоре»', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('name').onMessage('Пётр', {peerId: 'петя'});
+
+    connection.channel('bye').onMessage(true, {peerId: 'петя'});
+    connection.handlers.onPeerLeave('петя');
+
+    expect(room.state().notice?.text).toBe('Пётр больше не в разговоре');
+  });
+
+  it('пропал без прощания — «связь прервалась»', async () => {
+    // Раньше плитка исчезала молча, и «положил трубку» было не отличить от
+    // «у него пропала связь». А во втором случае стоит подождать.
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('name').onMessage('Пётр', {peerId: 'петя'});
+
+    connection.handlers.onPeerLeave('петя');
+
+    expect(room.state().notice?.text).toBe('Пётр — связь прервалась');
+  });
+
+  it('имени не знаем — говорим «Собеседник»', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+
+    connection.handlers.onPeerLeave('петя');
+
+    expect(room.state().notice?.text).toBe('Собеседник — связь прервалась');
+  });
+
+  it('строка гаснет сама', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+    connection.handlers.onPeerLeave('петя');
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(room.state().notice).toBe(null);
+  });
+
+  it('прощание не залёживается: вернулся и снова пропал — уже без прощания', async () => {
+    // Иначе давнее «до свидания» объявило бы добровольным уход, который на
+    // деле был обрывом связи.
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('bye').onMessage(true, {peerId: 'петя'});
+    connection.handlers.onPeerLeave('петя');
+
+    connection.handlers.onPeerJoin('петя');
+    connection.handlers.onPeerLeave('петя');
+
+    expect(room.state().notice?.text).toBe('Собеседник — связь прервалась');
+  });
+
+  it('вешая трубку, прощаемся сами', async () => {
+    const {room, connection} = await openRoom();
+
+    await room.leave();
+
+    expect(connection.channel('bye').sent).toEqual([true]);
+  });
+});
+
+describe('попрощавшегося убираем сразу', () => {
+  it('плитка уходит по прощанию, не дожидаясь, пока погаснет соединение', async () => {
+    // Закрытая вкладка гасит соединение не сразу — замерено двенадцать
+    // секунд, и всё это время плитка ушедшего висела на экране.
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+
+    connection.channel('bye').onMessage(true, {peerId: 'петя'});
+
+    expect(room.state().peers).toEqual([]);
+    expect(room.state().notice?.text).toBe('Собеседник больше не в разговоре');
+  });
+
+  it('когда библиотека потом сообщит об уходе, второй раз не говорим', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('bye').onMessage(true, {peerId: 'петя'});
+
+    connection.handlers.onPeerLeave('петя');
+
+    // Строка осталась прежней, а не сменилась на «связь прервалась».
+    expect(room.state().notice?.text).toBe('Собеседник больше не в разговоре');
+  });
+
+  it('запоздалая дорожка ушедшего плитку не возвращает', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('bye').onMessage(true, {peerId: 'петя'});
+
+    connection.handlers.onPeerStream({id: 'поток'}, 'петя', 'camera');
+
+    expect(room.state().peers).toEqual([]);
+  });
+
+  it('прощание от незнакомца ничего не делает', async () => {
+    const {room, connection} = await openRoom();
+
+    connection.channel('bye').onMessage(true, {peerId: 'кто-то'});
+
+    expect(room.state().notice).toBe(null);
+  });
+});

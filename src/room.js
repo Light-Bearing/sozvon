@@ -102,6 +102,7 @@ export const createRoom = async ({
     messages: chat.all(),
     unread,
     reactions: new Map(reactions),
+    notice,
     devices: media.chosen?.() ?? {microphone: null, camera: null},
     peers: [...peers.entries()].map(([peerId, stream]) => ({
       peerId,
@@ -136,6 +137,40 @@ export const createRoom = async ({
   let chatChannel = null;
   let screensChannel = null;
   let mediaChannel = null;
+  let byeChannel = null;
+
+  // Кто попрощался. Уходя сам, человек говорит об этом по каналу данных, —
+  // иначе его плитка исчезала бы молча, и «положил трубку» было не
+  // отличить от «у него пропала связь». А это разные вещи: во втором случае
+  // стоит подождать, в первом — нечего.
+  //
+  // Попрощавшегося убираем сразу, не дожидаясь, пока умрёт соединение. Когда
+  // человек закрывает вкладку, соединение гаснет не мгновенно: замерено
+  // двенадцать секунд, и всё это время его плитка висела на экране, хотя
+  // «до свидания» пришло в первую же секунду. А когда библиотека потом
+  // сообщит об уходе сама, мы это сообщение просто проглотим.
+  const gone = new Set();
+
+  const forget = peerId => {
+    peers.delete(peerId);
+    screens.delete(peerId);
+    names.delete(peerId);
+    peerMedia.delete(peerId);
+    forgetReaction(peerId);
+  };
+
+  // Короткая строка о том, кто пропал и как. Живёт секунды, как реакция.
+  const NOTICE_MS = 5000;
+  let notice = null;
+  let noticeTimer = null;
+  const tell = text => {
+    clearTimeout(noticeTimer);
+    notice = {text, at: Date.now()};
+    noticeTimer = setTimeout(() => {
+      notice = null;
+      announce();
+    }, NOTICE_MS);
+  };
 
   // Что у собеседника с микрофоном и камерой. Выводить это из дорожек
   // нельзя: выключенная дорожка приходит живой и просто молчит, и «он
@@ -204,6 +239,8 @@ export const createRoom = async ({
           announce();
         },
         onPeerJoin: peerId => {
+          // Вернулся под тем же именем — значит, не ушёл.
+          gone.delete(peerId);
           peers.set(peerId, null);
           // Вошедший ещё не знает, как нас зовут: посылать имя при входе
           // должен тот, кто уже внутри, — сам новичок о нас не спросит.
@@ -215,14 +252,19 @@ export const createRoom = async ({
           announce();
         },
         onPeerLeave: peerId => {
-          peers.delete(peerId);
-          screens.delete(peerId);
-          names.delete(peerId);
-          peerMedia.delete(peerId);
-          forgetReaction(peerId);
+          // Попрощавшийся уже убран — второй раз о нём не говорим.
+          if (gone.delete(peerId)) return;
+          // Имя берём ДО того, как забудем собеседника. Формулировки такие,
+          // чтобы не знать ни пола, ни падежа: «Ли Вэй» или «Шумный Барсук»
+          // по падежам не провести, а «вышел» или «вышла» не угадать.
+          tell(`${names.get(peerId) ?? 'Собеседник'} — связь прервалась`);
+          forget(peerId);
           announce();
         },
         onPeerStream: (peerStream, peerId, role = 'camera') => {
+          // Попрощался, а соединение ещё не погасло: запоздалая дорожка
+          // вернула бы на экран плитку того, кто уже ушёл.
+          if (gone.has(peerId)) return;
           // У камеры и экрана правила разные, и это не небрежность.
           // Собеседник без картинки в разговоре остаётся — плитка темнеет,
           // но живёт. А плитка экрана существует только ради самого
@@ -290,6 +332,17 @@ export const createRoom = async ({
   // пересогласовании» по её состоянию нельзя. Гадали бы — плитка либо
   // висела бы вечно после конца показа, либо моргала бы на каждом
   // пересогласовании.
+  byeChannel = typeof connection.action === 'function' ? connection.action('bye') : null;
+  if (byeChannel) {
+    byeChannel.onMessage = (_, {peerId}) => {
+      if (gone.has(peerId) || !peers.has(peerId)) return;
+      tell(`${names.get(peerId) ?? 'Собеседник'} больше не в разговоре`);
+      gone.add(peerId);
+      forget(peerId);
+      announce();
+    };
+  }
+
   mediaChannel = typeof connection.action === 'function' ? connection.action('media') : null;
   if (mediaChannel) {
     mediaChannel.onMessage = (value, {peerId}) => {
@@ -686,7 +739,28 @@ export const createRoom = async ({
       announce();
     },
 
+    // Прощание без ожидания — для закрытия вкладки: там ждать нельзя, браузер
+    // уже разбирает страницу. Сообщение по каналу данных уходит сразу, и
+    // обычно успевает раньше, чем соединение закроется.
+    sayBye: () => {
+      try {
+        void Promise.resolve(byeChannel?.send(true)).catch(() => {});
+      } catch {
+        // Канал уже закрыт — прощаться поздно.
+      }
+    },
+
     leave: async () => {
+      // Прощаемся до того, как закрыть соединения: после закрытия сказать
+      // уже нечем. Ждём недолго — вешать трубку дольше полсекунды из-за
+      // вежливости человек не должен.
+      if (byeChannel) {
+        await Promise.race([
+          Promise.resolve(byeChannel.send(true)).catch(() => {}),
+          new Promise(resolve => setTimeout(resolve, 400)),
+        ]);
+      }
+      clearTimeout(noticeTimer);
       clearInterval(timer);
       clearInterval(speakingTimer);
       for (const id of [...fading.keys()]) forgetReaction(id);
