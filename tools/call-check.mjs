@@ -107,8 +107,20 @@ const открыть = async url => {
       RTCPeerConnection.prototype.setLocalDescription = function (...args) {
         const turn = (this.getConfiguration().iceServers || [])
           .some(s => [].concat(s.urls).some(u => /^turns?:/.test(u)));
-        const kind = args[0]?.type || (this.remoteDescription ? 'answer' : 'offer');
-        window.__описания.push({kind, turn});
+        // Вид описания — по состоянию переговоров, а не по тому, пришло ли
+        // что-то от собеседника. На живом соединении ответ от него пришёл
+        // давно, и прежний счётчик записывал в «ответы» повторное
+        // предложение при включении камеры — у которого ретранслятора и не
+        // должно быть. Проверка из-за этого то проходила, то падала, смотря
+        // кто в паре отвечал первым.
+        const явный = args[0]?.type;
+        const kind =
+          явный === 'rollback' ? 'rollback'
+          : явный ?? (this.signalingState === 'have-remote-offer' ? 'answer' : 'offer');
+        // Первое предложение — до всякого ответа собеседника: это и есть
+        // заготовки библиотеки. Повторные — переговоры на живом соединении.
+        const first = kind === 'offer' && !this.remoteDescription;
+        window.__описания.push({kind, turn, first});
         return sld.apply(this, args);
       };`,
   });
@@ -195,12 +207,12 @@ if (секунд < 40) {
 const описания = async t => (await t.ev('window.__описания')) ?? [];
 const уХозяина = await описания(хозяин);
 const уГостя = await описания(гость);
-const предложенийСРетранслятором = [...уХозяина, ...уГостя].filter(x => x.kind === 'offer' && x.turn).length;
+const заготовки = [...уХозяина, ...уГостя].filter(x => x.first);
 const ответы = [...уХозяина, ...уГостя].filter(x => x.kind === 'answer');
 отметить(
-  предложенийСРетранслятором === 0,
+  заготовки.length > 0 && заготовки.every(x => !x.turn),
   'заготовки без ретранслятора',
-  `предложений с ретранслятором: ${предложенийСРетранслятором}`,
+  `с ретранслятором ${заготовки.filter(x => x.turn).length} из ${заготовки.length}`,
 );
 отметить(
   ответы.length > 0 && ответы.every(x => x.turn),

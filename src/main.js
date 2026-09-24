@@ -261,7 +261,11 @@ for (const button of app.querySelectorAll('[data-diagnostics]')) {
   button.onclick = () => {
     screenBeforeDiagnostics = app.querySelector('#screen-failed').hidden ? 'start' : 'failed';
     showScreen(app, 'diagnostics');
-    void renderDiagnostics(app.querySelector('#diagnostics-body'), relay);
+    // Свой ключ проверяем свежим пропуском; нет ключа — проверяем тот
+    // пропуск, что пришёл в приглашении.
+    void renderDiagnostics(app.querySelector('#diagnostics-body'), relay, {
+      servers: relay.address && relay.secret ? [] : serversFromPass(invitedPass),
+    });
   };
 }
 

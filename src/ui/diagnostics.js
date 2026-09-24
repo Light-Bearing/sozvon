@@ -162,8 +162,13 @@ export const checkRelays = async () => {
 // событие об ошибке льда в некоторых окружениях не срабатывает вовсе.
 // Поэтому отдельно щупаем сам адрес обычным запросом STUN — на него
 // ретранслятор отвечает без всякого пропуска.
-export const checkRelayServer = async (relay, {timeoutMs = 8_000} = {}) => {
-  const turnConfig = await turnConfigFor(relay);
+// servers — готовый список, если ретранслятор пришёл не ключом, а пропуском
+// в приглашении: у гостя ключа нет, а ретранслятор есть, и проверить надо
+// именно его. Без этого гость, у которого не встал звонок, открывал
+// проверку и читал «ретранслятор не настроен» — ровно тогда, когда
+// ретранслятор у него был.
+export const checkRelayServer = async (relay, {timeoutMs = 8_000, servers} = {}) => {
+  const turnConfig = servers?.length ? servers : await turnConfigFor(relay);
   if (!turnConfig.length) return {configured: false};
 
   const probe = async iceServers => {
@@ -205,13 +210,13 @@ export const explainRelay = result => {
   return 'Ретранслятор не отвечает. Проверьте адрес, порт 3478 и брандмауэр на машине.';
 };
 
-export const renderDiagnostics = async (container, relay) => {
+export const renderDiagnostics = async (container, relay, {servers} = {}) => {
   container.textContent = 'Проверяю…';
 
   const [nat, relays, ownRelay] = await Promise.all([
     checkNat(),
     checkRelays(),
-    checkRelayServer(relay ?? {}),
+    checkRelayServer(relay ?? {}, {servers}),
   ]);
 
   const alive = relays.filter(r => r.ok);
