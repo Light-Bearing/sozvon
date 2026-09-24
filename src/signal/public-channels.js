@@ -1,5 +1,6 @@
 import {joinRoom as joinNostr, getRelaySockets as nostrSockets} from '@trystero-p2p/nostr';
 import {joinRoom as joinMqtt, getRelaySockets as mqttSockets} from '@trystero-p2p/mqtt';
+import {createRtcClass} from '../rtc.js';
 import {createPeerRegistry} from './dedupe.js';
 import {relayUrlsFor} from './relays.js';
 import {troubleFrom} from './trouble.js';
@@ -50,9 +51,10 @@ export const familiesFor = (names, all = FAMILIES) =>
 // families — необязательный параметр только для тестов: подсовывает
 // поддельные {family, join} вместо трёх настоящих пакетов. Вызывающие из
 // приложения его не передают и получают FAMILIES по умолчанию.
-// turnConfig — список ретрансляторов для льда. Библиотека дописывает его к
-// своим STUN-серверам, а не заменяет их: прямой путь по-прежнему пробуется
-// первым, ретранслятор включается только когда прямого нет.
+// Ретранслятор сюда больше не передаётся. Отдай его библиотеке — она
+// раздаст его всем соединениям, включая сорок заготовок, и каждая попросит
+// на нём места. Вместо этого библиотеке дан свой класс соединения (см.
+// src/rtc.js): он подключает ретранслятор только отвечающей стороне пары.
 // Сколько жалоба считается свежей. Пока беда длится, библиотека сообщает
 // о ней заново на каждой попытке, и отсчёт начинается сначала. А вот
 // жалоба на участника, которого больше никто не ищет, должна уйти сама:
@@ -65,7 +67,7 @@ export const joinPublicChannels = ({
   password,
   handlers,
   families = FAMILIES,
-  turnConfig,
+  rtcPolyfill = createRtcClass(),
   now = () => Date.now(),
 }) => {
   const registry = createPeerRegistry();
@@ -169,7 +171,7 @@ export const joinPublicChannels = ({
         appId: APP_ID,
         password,
         relayConfig: {urls: relays},
-        ...(turnConfig?.length ? {turnConfig} : {}),
+        ...(rtcPolyfill ? {rtcPolyfill} : {}),
       },
       roomId,
       {

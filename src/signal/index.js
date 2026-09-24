@@ -41,7 +41,7 @@ export const watchForLife = (alive, onQuiet, quietAfterMs = QUIET_HINT_AFTER_MS)
 
 // families — необязательный параметр только для тестов, как и в
 // joinPublicChannels(), которому он передаётся насквозь.
-export const connect = async ({secret, handlers, families, turnConfig, onQuiet = () => {}}) => {
+export const connect = async ({secret, handlers, families, onQuiet = () => {}}) => {
   const [roomId, password] = await Promise.all([
     deriveRoomId(secret),
     derivePassword(secret),
@@ -52,7 +52,6 @@ export const connect = async ({secret, handlers, families, turnConfig, onQuiet =
     roomId,
     password,
     families,
-    turnConfig,
     handlers: {
       ...handlers,
       onPeerJoin: peerId => {

@@ -1,4 +1,4 @@
-import {generateSecret, linkToSecret} from './room-secret.js';
+import {generateSecret, linkToSecret, passFromLink} from './room-secret.js';
 import {createRoom} from './room.js';
 import {createAwake} from './awake.js';
 import {familiesFor, parseFamilyNames} from './signal/public-channels.js';
@@ -11,7 +11,8 @@ import {createSettings} from './ui/settings.js';
 import {createChat} from './ui/chat.js';
 import {makeName, trimName} from './names.js';
 import {recall, remember} from './store.js';
-import {relayFromLink, turnConfigFor} from './turn.js';
+import {packPass, passFor, relayFromLink, serversFromPass, unpackPass} from './turn.js';
+import {relayInUse, useRelay} from './rtc.js';
 
 const app = document.querySelector('#app');
 
@@ -97,6 +98,9 @@ const families = familiesFor(
 // остаётся секрет, который по виду не отличить от чужого приглашения
 // (та же длина, тот же алфавит).
 const invited = linkToSecret(location.href);
+// Пропуск к ретранслятору, если его принесло приглашение. Читаем сразу, по
+// той же причине, что и секрет: потом в адресе может оказаться что угодно.
+const invitedPass = unpackPass(passFromLink(location.href));
 
 // Одна точка отрисовки экрана звонка — ею пользуется и комната (на каждое
 // изменение), и настройки, когда меняется то, чем комната не распоряжается.
@@ -121,7 +125,7 @@ const paint = state => {
       speaker: picked.speaker,
       mirror,
       pinned,
-      relayReady: Boolean(relay.address && relay.secret),
+      relayReady: relayInUse().length > 0,
     },
     {
       toggleMicrophone: () => room.setMicrophone(!state.mic),
@@ -134,6 +138,7 @@ const paint = state => {
       hangUp: async () => {
         await room.leave();
         await awake.stop();
+        useRelay([]);
         room = null;
         pinned = null;
         screensSeen = new Set();
@@ -164,14 +169,21 @@ const enter = async secret => {
   location.hash = secret;
   showScreen(app, 'call');
   try {
-    // Пропуск выписывается на каждый звонок заново и живёт полсуток.
-    // Пустая настройка даёт пустой список — звонок пойдёт как раньше.
-    const turnConfig = await turnConfigFor(relay);
+    // Пропуск к ретранслятору. У хозяина — свежий, выписанный своим ключом
+    // на этот разговор (живёт полсуток). У гостя — тот, что пришёл в
+    // приглашении. Нет ни того ни другого — звонок идёт напрямую, как раньше.
+    const pass = (await passFor(relay)) ?? invitedPass;
+    useRelay(serversFromPass(pass));
+    const packed = pass ? packPass(pass) : null;
+    // Пропуск остаётся и в адресе: перезагрузи гость страницу — и без него
+    // он остался бы без ретранслятора посреди разговора. replaceState, а не
+    // hash: это та же страница, лишний шаг «назад» тут ни к чему.
+    if (packed) history.replaceState(null, '', `#${secret}.${packed}`);
 
     room = await createRoom({
       secret,
       families,
-      turnConfig,
+      pass: packed,
       // Намерение по микрофону/камере целиком живёт в room.js (createRoom
       // заводит его заново на каждый звонок) и приходит сюда через state —
       // отдельной копии в main.js больше нет, поэтому её нечему рассогласовать

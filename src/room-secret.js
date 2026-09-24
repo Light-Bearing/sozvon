@@ -28,14 +28,23 @@ export const derivePassword = async secret => toBase64Url(await digest(secret, '
 // origin и pathname по кускам: у адресов file:// (открыли собранный в один
 // файл HTML прямо с диска) Chrome отдаёт location.origin как строку "null",
 // и склейка получалась битой — "null/Users/.../index.html#…".
-export const secretToLink = (secret, base) =>
-  `${base ?? location.href.split('#')[0]}#${secret}`;
+//
+// После секрета через точку может идти пропуск к ретранслятору (см.
+// src/turn.js). Точка — потому что в алфавит секрета она не входит, и
+// граница читается однозначно.
+export const secretToLink = (secret, base, pass) =>
+  `${base ?? location.href.split('#')[0]}#${secret}${pass ? `.${pass}` : ''}`;
 
-export const linkToSecret = href => {
+const HASH = /^([A-Za-z0-9_-]{22})(?:\.([A-Za-z0-9_-]+))?$/;
+
+const hashOf = href => {
   try {
-    const hash = new URL(href).hash.slice(1);
-    return /^[A-Za-z0-9_-]{22}$/.test(hash) ? hash : null;
+    return new URL(href).hash.slice(1);
   } catch {
-    return null;
+    return '';
   }
 };
+
+export const linkToSecret = href => HASH.exec(hashOf(href))?.[1] ?? null;
+
+export const passFromLink = href => HASH.exec(hashOf(href))?.[2] ?? null;

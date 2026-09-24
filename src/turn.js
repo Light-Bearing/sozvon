@@ -88,3 +88,63 @@ export const relayFromLink = href => {
     return null;
   }
 };
+
+// ── пропуск в приглашении ──────────────────────────────────
+//
+// Ретранслятор был только у хозяина и закрывал только его пары. Пара двух
+// гостей оставалась без защиты — ровно так в разговоре впятером две пары
+// не видели друг друга, а хозяин видел всех.
+//
+// Поэтому в приглашение кладём ПРОПУСК — не ключ. Пропуск живёт полсуток и
+// позволяет одно: пересылать пакеты через этот ретранслятор. Ключ, которым
+// пропуска выписываются, остаётся в браузере хозяина, как и был.
+//
+// Цена честная: кто получит ссылку, тот полсуток может пользоваться
+// ретранслятором. Но он и так может войти в разговор — ссылка ровно для
+// этого и отдана.
+
+const toBase64Url = text =>
+  btoa(String.fromCharCode(...new TextEncoder().encode(text)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+// Пропуск для приглашения, выписанный ключом хозяина. Пусто — если
+// ретранслятор не настроен: тогда и класть в ссылку нечего.
+export const passFor = async ({address, secret, now} = {}) => {
+  const clean = String(address ?? '').trim();
+  if (!clean || !secret) return null;
+  const {username, credential} = await mintTicket(secret, {now});
+  return {address: clean, username, credential};
+};
+
+export const packPass = ({address, username, credential}) =>
+  toBase64Url(JSON.stringify({a: address, u: username, c: credential}));
+
+// Срок пропуска записан в самом имени: «срок:кто». Просроченный отбрасываем
+// сразу — ретранслятор его всё равно не примет, а попытка стоила бы
+// времени на каждом соединении.
+export const unpackPass = (blob, {now = Date.now()} = {}) => {
+  try {
+    const {a, u, c} = JSON.parse(fromBase64Url(String(blob ?? '')));
+    const address = String(a ?? '').trim();
+    const username = String(u ?? '');
+    const credential = String(c ?? '');
+    const until = Number(username.split(':')[0]);
+    if (!address || !credential || !Number.isFinite(until)) return null;
+    if (until * 1000 <= now) return null;
+    return {address, username, credential};
+  } catch {
+    // Испорченный хвост ссылки — не повод падать: просто без ретранслятора.
+    return null;
+  }
+};
+
+export const serversFromPass = pass =>
+  pass
+    ? relayUrls(pass.address).map(urls => ({
+        urls,
+        username: pass.username,
+        credential: pass.credential,
+      }))
+    : [];

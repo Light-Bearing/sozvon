@@ -1,9 +1,10 @@
 import {describe, expect, it} from 'vitest';
 import {
-  deriveRoomId,
   derivePassword,
+  deriveRoomId,
   generateSecret,
   linkToSecret,
+  passFromLink,
   secretToLink,
 } from '../src/room-secret.js';
 
@@ -72,5 +73,36 @@ describe('секрет комнаты', () => {
     expect(linkToSecret('не-ссылка')).toBeNull();
     expect(linkToSecret('')).toBeNull();
     expect(linkToSecret('#хвост')).toBeNull();
+  });
+});
+
+describe('пропуск в хвосте ссылки', () => {
+  const СЕКРЕТ = 'AbCdEfGhIjKlMnOpQrStUv';
+
+  it('ссылка без пропуска выглядит как прежде', () => {
+    expect(secretToLink(СЕКРЕТ, 'https://s.test/')).toBe(`https://s.test/#${СЕКРЕТ}`);
+  });
+
+  it('пропуск идёт после секрета через точку', () => {
+    expect(secretToLink(СЕКРЕТ, 'https://s.test/', 'eyJhIjoi')).toBe(
+      `https://s.test/#${СЕКРЕТ}.eyJhIjoi`,
+    );
+  });
+
+  it('секрет читается и из ссылки с пропуском', () => {
+    // Иначе приглашение с ретранслятором перестало бы быть приглашением.
+    expect(linkToSecret(`https://s.test/#${СЕКРЕТ}.eyJhIjoi`)).toBe(СЕКРЕТ);
+    expect(passFromLink(`https://s.test/#${СЕКРЕТ}.eyJhIjoi`)).toBe('eyJhIjoi');
+  });
+
+  it('старые ссылки без пропуска по-прежнему работают', () => {
+    expect(linkToSecret(`https://s.test/#${СЕКРЕТ}`)).toBe(СЕКРЕТ);
+    expect(passFromLink(`https://s.test/#${СЕКРЕТ}`)).toBe(null);
+  });
+
+  it('ссылка настройки ретранслятора за приглашение не сходит', () => {
+    // В ней лежит ключ целиком; перепутать её с приглашением значило бы
+    // войти в разговор с ключом в адресной строке.
+    expect(linkToSecret('https://s.test/#turn=eyJhIjoi')).toBe(null);
   });
 });

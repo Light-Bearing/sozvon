@@ -1,5 +1,14 @@
 import {describe, expect, it} from 'vitest';
-import {TICKET_SECONDS, mintTicket, relayUrls, turnConfigFor} from '../src/turn.js';
+import {
+  TICKET_SECONDS,
+  mintTicket,
+  packPass,
+  passFor,
+  relayUrls,
+  serversFromPass,
+  turnConfigFor,
+  unpackPass,
+} from '../src/turn.js';
 
 describe('адрес ретранслятора', () => {
   it('голый field дополняется портом и получает пару — обычную и по TCP', () => {
@@ -108,3 +117,61 @@ describe('настройка ретранслятора ссылкой', () => {
     expect(relayFromLink(makeLink('адрес', ''))).toBe(null);
   });
 });
+
+describe('пропуск в приглашении', () => {
+  const СЕЙЧАС = Date.UTC(2026, 8, 24, 12, 0, 0);
+
+  it('упакованный пропуск распаковывается тем же', async () => {
+    const пропуск = await passFor({address: '195.0.2.1', secret: 'ключ', now: СЕЙЧАС});
+
+    expect(unpackPass(packPass(пропуск), {now: СЕЙЧАС})).toEqual(пропуск);
+  });
+
+  it('в пропуске нет ключа — только имя и подпись', async () => {
+    // Весь смысл пропуска: ключ остаётся в браузере хозяина. Проверяем
+    // по-честному — ищем ключ в самой упаковке.
+    const пропуск = await passFor({address: '195.0.2.1', secret: 'совсем-тайный-ключ', now: СЕЙЧАС});
+    const упаковка = packPass(пропуск);
+
+    expect(JSON.stringify(unpackPass(упаковка, {now: СЕЙЧАС}))).not.toContain('совсем-тайный-ключ');
+    expect(атобТекст(упаковка)).not.toContain('совсем-тайный-ключ');
+  });
+
+  it('просроченный пропуск отбрасывается', async () => {
+    // Ретранслятор его всё равно не примет, а попытка стоила бы времени на
+    // каждом соединении.
+    const пропуск = await passFor({address: '195.0.2.1', secret: 'ключ', now: СЕЙЧАС});
+    const потом = СЕЙЧАС + (TICKET_SECONDS + 1) * 1000;
+
+    expect(unpackPass(packPass(пропуск), {now: потом})).toBe(null);
+  });
+
+  it('испорченный хвост ссылки — просто без ретранслятора', () => {
+    expect(unpackPass('%%%')).toBe(null);
+    expect(unpackPass('')).toBe(null);
+    expect(unpackPass(undefined)).toBe(null);
+    expect(unpackPass(btoa('{"a":"x"}'))).toBe(null);
+  });
+
+  it('без ретранслятора пропуска нет', async () => {
+    expect(await passFor({address: '', secret: 'ключ'})).toBe(null);
+    expect(await passFor({address: 'x', secret: ''})).toBe(null);
+  });
+
+  it('из пропуска получается пара адресов для льда', async () => {
+    const пропуск = await passFor({address: '195.0.2.1', secret: 'ключ', now: СЕЙЧАС});
+
+    expect(serversFromPass(пропуск)).toEqual([
+      {urls: 'turn:195.0.2.1:3478', username: пропуск.username, credential: пропуск.credential},
+      {urls: 'turn:195.0.2.1:3478?transport=tcp', username: пропуск.username, credential: пропуск.credential},
+    ]);
+    expect(serversFromPass(null)).toEqual([]);
+  });
+});
+
+// base64url → текст, для проверки, что внутри упаковки.
+const атобТекст = blob => {
+  const padded = blob.replace(/-/g, '+').replace(/_/g, '/');
+  const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, '='));
+  return new TextDecoder().decode(Uint8Array.from(binary, c => c.charCodeAt(0)));
+};

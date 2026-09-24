@@ -509,8 +509,12 @@ describe('публичные каналы: жалобы на неудачу', ()
   });
 });
 
-describe('ретранслятор доходит до библиотеки', () => {
-  const collect = turnConfig => {
+describe('ретранслятор библиотеке не отдаётся — ей отдаётся класс соединения', () => {
+  // Отдай ретранслятор библиотеке списком — она раздаст его всем соединениям,
+  // включая сорок заготовок, и каждая попросит на нём места. Поэтому
+  // библиотека получает свой класс соединения (src/rtc.js), а он уже решает,
+  // кому ретранслятор положен.
+  const collect = rtcPolyfill => {
     const configs = [];
     const families = FAMILY_NAMES.map(family => ({
       family,
@@ -520,19 +524,23 @@ describe('ретранслятор доходит до библиотеки', ()
       },
       getRelaySockets: () => ({}),
     }));
-    joinPublicChannels({roomId: 'r', password: 'p', handlers: {}, families, turnConfig});
+    joinPublicChannels({roomId: 'r', password: 'p', handlers: {}, families, rtcPolyfill});
     return configs;
   };
 
-  it('список ретрансляторов попадает в настройку каждого семейства', () => {
-    const turnConfig = [{urls: 'turn:host:3478', username: 'u', credential: 'c'}];
+  it('класс соединения доходит до каждого семейства', () => {
+    class Своё {}
 
-    expect(collect(turnConfig).map(c => c.turnConfig)).toEqual([turnConfig, turnConfig]);
+    expect(collect(Своё).map(c => c.rtcPolyfill)).toEqual([Своё, Своё]);
   });
 
-  it('без ретранслятора поля нет вовсе — библиотека берёт свои умолчания', () => {
-    for (const config of collect(undefined)) expect('turnConfig' in config).toBe(false);
-    for (const config of collect([])) expect('turnConfig' in config).toBe(false);
+  it('списка ретрансляторов в настройке библиотеки нет никогда', () => {
+    class Своё {}
+    for (const config of collect(Своё)) expect('turnConfig' in config).toBe(false);
+  });
+
+  it('нет своего класса (нет RTCPeerConnection) — библиотека берёт свой', () => {
+    for (const config of collect(undefined)) expect('rtcPolyfill' in config).toBe(false);
   });
 });
 

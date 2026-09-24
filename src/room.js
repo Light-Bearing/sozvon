@@ -22,7 +22,10 @@ export const createRoom = async ({
   ladder = createLadder(),
   families,
   name,
-  turnConfig,
+  // Пропуск к ретранслятору для приглашения (см. src/turn.js). Сам
+  // ретранслятор соединениям раздаёт src/rtc.js, комната о нём не знает —
+  // ей нужно лишь положить пропуск в ссылку.
+  pass = null,
 }) => {
   const peers = new Map();
   // Экраны собеседников — отдельно от лиц: это две разные картинки, и
@@ -83,7 +86,7 @@ export const createRoom = async ({
   let speaking = [];
 
   const state = () => ({
-    link: secretToLink(secret),
+    link: secretToLink(secret, undefined, pass),
     quiet,
     troubles,
     flow,
@@ -186,7 +189,6 @@ export const createRoom = async ({
     connection = await connectFn({
       secret,
       families,
-      turnConfig,
       onQuiet: isQuiet => {
         if (quiet === isQuiet) return;
         quiet = isQuiet;
