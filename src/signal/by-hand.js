@@ -18,6 +18,7 @@
 
 import {gatherComplete, manualLink, unpack} from './manual.js';
 import {isSlim, slimPack, slimUnpack} from './slim-sdp.js';
+import {withBetterAudio} from '../opus.js';
 
 // Код — короткий нового вида или сжатое полное описание, как в 0.23.
 export const readCode = async code => (isSlim(code) ? slimUnpack(code) : unpack(code));
@@ -121,7 +122,7 @@ export const connectByHand = ({
     }
     if (a === '@sdp') {
       try {
-        await pc.setRemoteDescription(d);
+        await pc.setRemoteDescription(withBetterAudio(d));
       } catch {
         return;
       }

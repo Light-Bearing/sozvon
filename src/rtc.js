@@ -15,6 +15,8 @@
 // создаёт заново, не из заготовок. Поэтому ретранслятор получают ровно
 // отвечающие: у каждой пары он есть, у заготовок его нет.
 
+import {withBetterAudio} from './opus.js';
+
 let relay = [];
 
 // Какой ретранслятор сейчас в ходу. Живёт здесь, а не в настройке комнаты:
@@ -65,7 +67,8 @@ export const createRtcClass = (Base = globalThis.RTCPeerConnection) => {
           // не хуже, чем был бы без ретранслятора вовсе.
         }
       }
-      return super.setRemoteDescription(description, ...rest);
+      // Звук почище — см. src/opus.js.
+      return super.setRemoteDescription(withBetterAudio(description), ...rest);
     }
   };
 };
