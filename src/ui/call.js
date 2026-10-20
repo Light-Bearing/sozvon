@@ -24,6 +24,10 @@ import {renderChat} from './chat.js';
 // Выключенная камера собеседника сюда доходит другим путём, надёжным:
 // дорожка снимается с соединения, кончается, и мы убираем её из потока
 // (см. onPeerTrack в src/signal/public-channels.js).
+// Признак «глухая» (muted) у чужой дорожки здесь не годится: он включается
+// сам собой при пересогласовании, пока кадры идут, и плитка темнела поверх
+// работающей картинки. Что камеру выключили, собеседник говорит сам (cam
+// в updateTile ниже) — это и решает.
 const hasPicture = stream =>
   stream?.getVideoTracks().some(track => track.enabled && track.readyState !== 'ended');
 
@@ -365,7 +369,12 @@ const updateTile = (box, {stream, label, isSelf, speaker, speaking, mirror, reac
   const isScreen = box.dataset.peer.endsWith('|screen');
   box.classList.toggle('tile--mirror', isSelf && !isScreen && Boolean(mirror));
   box.classList.toggle('tile--speaking', Boolean(speaking));
-  box.classList.toggle('tile--dark', !hasPicture(stream));
+  // Собеседник сказал, что выключил камеру, — значит, картинки нет, даже
+  // если дорожка ещё числится живой. Она после выключения не кончается, а
+  // молчит, и плитка держала последний кадр: у того, кому шла картинка,
+  // лицо застывало посреди разговора.
+  const camOff = cam === false && !isSelf && !isScreen;
+  box.classList.toggle('tile--dark', camOff || !hasPicture(stream));
   box.dataset.initial = label.slice(0, 1);
 
   const name = box.querySelector('.tile-name');

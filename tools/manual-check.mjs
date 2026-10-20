@@ -190,6 +190,15 @@ if (соединились) {
     отметить(Boolean(увиденное?.имя) && увиденное.имя !== 'собеседник', `${имя} видит имя собеседника`, увиденное?.имя);
   }
 
+  // Выключил камеру — у собеседника плитка темнеет, а не держит последний кадр.
+  await хозяин.нажать('#cam');
+  const потемнела = await дождаться(
+    async () => (await гость.ev(`document.querySelector('#tiles .tile:not([data-peer="self"])')?.classList.contains('tile--dark')`)) === true,
+    5,
+  );
+  отметить(потемнела, 'хозяин выключил камеру — у гостя плитка темнеет');
+  await хозяин.нажать('#cam');
+
   // Сообщение по тому же каналу, по которому договаривались.
   await гость.ev(`(() => { const t = document.querySelector('#chat-text'); t.value = 'проверка связи'; document.querySelector('#chat-form').requestSubmit(); })()`);
   await ждать(1500);

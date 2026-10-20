@@ -304,6 +304,34 @@ describe('когда плитка считается тёмной', () => {
     expect(isDark(el, 'петя')).toBe(false);
   });
 
+  it('собеседник выключил камеру — плитка тёмная, хотя дорожка ещё числится живой', () => {
+    // Чужая дорожка после выключения не кончается, а молчит: без этого
+    // плитка держала бы последний кадр.
+    const el = root();
+    const peers = [{peerId: 'петя', stream: stream(makeTrack({muted: true})), name: null, cam: false}];
+
+    renderCall(el, baseState({peers}), fakeActions());
+
+    expect(isDark(el, 'петя')).toBe(true);
+  });
+
+  it('включил снова — плитка светлеет', () => {
+    const el = root();
+    const s = stream(makeTrack());
+    renderCall(el, baseState({peers: [{peerId: 'петя', stream: s, name: null, cam: false}]}), fakeActions());
+
+    renderCall(el, baseState({peers: [{peerId: 'петя', stream: s, name: null, cam: true}]}), fakeActions());
+
+    expect(isDark(el, 'петя')).toBe(false);
+  });
+
+  it('ещё не сказал о себе — решает сама дорожка, а не догадка', () => {
+    const el = root();
+    renderCall(el, baseState({peers: [{peerId: 'петя', stream: stream(makeTrack()), name: null, cam: null}]}), fakeActions());
+
+    expect(isDark(el, 'петя')).toBe(false);
+  });
+
   it('кончившаяся makeTrack — картинки нет', () => {
     const el = root();
     const peers = [{peerId: 'петя', stream: stream(makeTrack({readyState: 'ended'})), name: null}];
