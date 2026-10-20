@@ -14,7 +14,8 @@
     "check:call": "node tools/call-check.mjs",
     "check:mesh": "node tools/mesh-check.mjs",
     "check:hand": "node tools/manual-check.mjs",
-    "check:cross": "node tools/cross-check.mjs"
+    "check:cross": "node tools/cross-check.mjs",
+    "check:screen": "node tools/screen-check.mjs"
   },
   "keywords": [],
   "author": "",

@@ -228,6 +228,31 @@ describe('публичные каналы: адресная доставка', (
       expect(fakes.mqtt.addStreamCalls).toEqual([]);
     });
 
+    it('экран, включённый до входа, доходит до вошедшего — с пометкой «экран»', () => {
+      // Живьём: показ шёл, кто-то вошёл — и экрана не увидел. Экран не
+      // живёт в общем потоке (там пометка потерялась бы), и при входе
+      // новичку отдавался только поток с камерой.
+      const screen = {id: 'screen-track'};
+      const screenStream = {id: 'screen-stream'};
+      connection.addTrack(screen, screenStream, {role: 'screen'});
+
+      fakes.nostr.join('петя');
+
+      expect(fakes.nostr.addTrackCalls).toEqual([
+        {track: screen, stream: screenStream, target: 'петя', metadata: {role: 'screen'}},
+      ]);
+    });
+
+    it('показ кончился до входа — вошедшему экран не досылается', () => {
+      const screen = {id: 'screen-track'};
+      connection.addTrack(screen, {id: 'screen-stream'}, {role: 'screen'});
+      connection.removeTrack(screen);
+
+      fakes.nostr.join('петя');
+
+      expect(fakes.nostr.addTrackCalls).toEqual([]);
+    });
+
     it('removeTrack снимает дорожку только у владельца, тоже адресно', () => {
       fakes.nostr.join('петя');
       fakes.mqtt.join('петя');

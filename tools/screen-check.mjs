@@ -1,14 +1,11 @@
-// Настоящий разговор нескольких человек: все видят и слышат всех.
+// Показ экрана в разговоре: вошедший посреди показа видит экран, конец
+// показа убирает плитку у всех, повторный показ возвращает её.
 //
-// call-check проверяет двоих, а чаще всего ломалось, когда людей больше:
-// кто-то видел всех, а две пары друг друга не видели. Здесь N вкладок одного
-// безголового Chrome с поддельной камерой и микрофоном входят по одной
-// ссылке, включают камеру со звуком — и у каждой должны быть живые плитки
-// всех остальных.
+// Живьём сломалось и то и другое: вошедшему экран не приходил вовсе, а
+// после конца показа плитка оставалась — заглохшая дорожка возвращала её.
 //
 // Запуск: дев-сервер должен работать (npm run dev), затем
-//   node tools/mesh-check.mjs [людей=4] [адрес]
-// Нужны публичные каналы: люди находят друг друга через них, как в жизни.
+//   node tools/screen-check.mjs [адрес]
 
 import {spawn} from 'node:child_process';
 import {mkdtempSync, rmSync} from 'node:fs';
@@ -16,10 +13,10 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 const PEOPLE = 2;
-const APP = process.argv[3] ?? 'http://localhost:5180/';
+const APP = process.argv[2] ?? 'http://localhost:5180/';
 const CHROME =
   process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const PORT = 9348;
+const PORT = 9349;
 const ВРЕМЯ_НА_СБОР = 90;
 
 const ждать = ms => new Promise(r => setTimeout(r, ms));
@@ -34,6 +31,8 @@ const chrome = spawn(
     '--no-first-run',
     '--disable-gpu',
     '--use-fake-ui-for-media-stream',
+    '--auto-accept-this-tab-capture',
+    '--auto-select-desktop-capture-source=Entire screen',
     '--use-fake-device-for-media-stream',
     '--disable-features=WebRtcHideLocalIpsWithMdns',
     'about:blank',
@@ -110,7 +109,7 @@ const открыть = async url => {
     }
     return true;
   };
-  return {ev, нажать, send};
+  return {ev, нажать};
 };
 
 const итоги = [];
@@ -158,28 +157,36 @@ const собрались = видят.every(n => n >= PEOPLE - 1);
 
 
 if (!собрались) закончить(1);
-const [a, b] = люди;
-const look = async (n, t) => {
-  const r = await t.ev(`JSON.stringify({trouble: document.querySelector('#trouble') && !document.querySelector('#trouble').hidden ? document.querySelector('#trouble-title').textContent : null, notice: document.querySelector('#notice') && !document.querySelector('#notice').hidden ? document.querySelector('#notice').textContent : null, tiles: document.querySelectorAll('#tiles .tile').length, screen: [...document.querySelectorAll('[id^=screen-]')].find(s => !s.hidden)?.id})`);
-  return r;
-};
-for (const who of (process.env.WHO ?? 'B').split(',')) {
-  const t = who === 'A' ? a : b;
-  console.log('--- перезагружает', who);
-  await t.send('Page.reload', {});
-  const t0 = Date.now();
-  let joined = false;
-  while (Date.now() - t0 < 70_000) {
-    if (!joined && Date.now() - t0 > 3000) {
-      const scr = await t.ev(`[...document.querySelectorAll('[id^=screen-]')].find(s => !s.hidden)?.id`);
-      if (scr === 'screen-join') { await t.нажать('#join'); joined = true; }
-    }
-    for (const [n, x] of [['A', a], ['B', b]]) {
-      const r = await look(n, x);
-      const o = JSON.parse(r ?? '{}');
-      if (o.trouble || o.notice || o.tiles !== 2) console.log(Math.round((Date.now() - t0) / 1000) + 's', n, r);
-    }
-    await ждать(1000);
-  }
+const [хозяин, первый] = люди;
+await хозяин.нажать('#screen');
+await ждать(4000);
+const экранУ = t => t.ev(`(async () => { const tile = document.querySelector('#tiles .tile[data-peer$="|screen"]:not([data-peer^="self"])'); const v = tile?.querySelector('video'); const t0 = v?.currentTime ?? 0; await new Promise(r => setTimeout(r, 1200)); return JSON.stringify({плитка: Boolean(tile), ширина: v?.videoWidth ?? 0, идёт: (v?.currentTime ?? 0) > t0}); })()`);
+const у1 = JSON.parse(await экранУ(первый));
+отметить(у1.плитка && у1.ширина > 0 && у1.идёт, 'кто был в разговоре — видит экран');
+const ссылка2 = await хозяин.ev(`document.querySelector('#link')?.textContent`);
+const второй = await открыть(ссылка2);
+await ждать(2500);
+await второй.нажать('#join');
+let вошёл = false;
+for (let i = 0; i < 40 && !вошёл; i++) { await ждать(1000); вошёл = (await второй.ev(`document.querySelectorAll('#tiles .tile:not([data-peer="self"])').length`)) >= 2; }
+await ждать(5000);
+const у2 = JSON.parse(await экранУ(второй));
+отметить(у2.плитка && у2.ширина > 0 && у2.идёт, 'вошедший во время показа видит экран');
+await хозяин.нажать('#screen');
+let ушла = false;
+for (let i = 0; i < 16 && !ушла; i++) { await ждать(500); ушла = !JSON.parse(await экранУ(второй)).плитка; }
+отметить(ушла, 'показ кончился — у вошедшего плитка экрана ушла');
+отметить(!JSON.parse(await экранУ(первый)).плитка, 'и у того, кто был с начала, — тоже ушла');
+
+await хозяин.нажать('#screen');
+let снова = false;
+for (let i = 0; i < 20 && !снова; i++) {
+  await ждать(500);
+  const a = JSON.parse(await экранУ(первый));
+  const b = JSON.parse(await экранУ(второй));
+  снова = a.плитка && a.ширина > 0 && b.плитка && b.ширина > 0;
 }
-закончить(0);
+отметить(снова, 'показ начали снова — экран вернулся у обоих');
+const провалов = итоги.filter(ok => !ok).length;
+console.log(провалов ? `\nПровалено проверок: ${провалов} из ${итоги.length}` : `\nВсе ${итоги.length} проверок прошли`);
+закончить(провалов ? 1 : 0);

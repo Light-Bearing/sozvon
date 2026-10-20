@@ -982,6 +982,34 @@ describe('показ экрана', () => {
     expect(room.state().peers[0].stream).toEqual({id: 'лицо'});
   });
 
+  it('заглохшая после конца показа дорожка не возвращает плитку', async () => {
+    // Живьём: показ кончился, а плитка осталась у всех. Дорожка экрана
+    // глохнет уже после слов «показ кончился», её перерисовка приходила
+    // позже и снова клала экран на место.
+    const {room, connection} = await openRoom({media: mediaWithScreen(null)});
+    connection.handlers.onPeerJoin('петя');
+    connection.handlers.onPeerStream(потокЭкрана(), 'петя', 'screen');
+    connection.channel('screen').onMessage(false, {peerId: 'петя'});
+
+    connection.handlers.onPeerStream(потокЭкрана(), 'петя', 'screen');
+
+    expect(room.state().peers[0].screen).toBe(null);
+  });
+
+  it('показ начали снова — плитка возвращается, даже если дорожка приехала раньше слов', async () => {
+    const {room, connection} = await openRoom({media: mediaWithScreen(null)});
+    connection.handlers.onPeerJoin('петя');
+    connection.handlers.onPeerStream(потокЭкрана(), 'петя', 'screen');
+    connection.channel('screen').onMessage(false, {peerId: 'петя'});
+
+    const новый = потокЭкрана();
+    connection.handlers.onPeerStream(новый, 'петя', 'screen');
+    expect(room.state().peers[0].screen).toBe(null);
+    connection.channel('screen').onMessage(true, {peerId: 'петя'});
+
+    expect(room.state().peers[0].screen).toBe(новый);
+  });
+
   it('пустой поток экрана плиткой не становится', async () => {
     const {room, connection} = await openRoom({media: mediaWithScreen(null)});
     connection.handlers.onPeerJoin('петя');

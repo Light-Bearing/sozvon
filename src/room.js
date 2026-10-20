@@ -181,9 +181,18 @@ export const createRoom = async ({
   // Все, кто хоть раз входил в разговор, — см. troubles в state().
   const met = new Set();
 
+  // Показывает ли собеседник экран — по его собственным словам (канал
+  // 'screen'), и последний поток его экрана. Дорожка экрана после конца
+  // показа не исчезает, а глохнет, и её перерисовка возвращала плитку
+  // обратно, если приходила позже слов «показ кончился».
+  const screenSaid = new Map();
+  const lastScreen = new Map();
+
   const forget = peerId => {
     peers.delete(peerId);
     screens.delete(peerId);
+    screenSaid.delete(peerId);
+    lastScreen.delete(peerId);
     names.delete(peerId);
     peerMedia.delete(peerId);
     forgetReaction(peerId);
@@ -344,8 +353,14 @@ export const createRoom = async ({
           // но живёт. А плитка экрана существует только ради самого
           // экрана: нет дорожки — нечего и показывать.
           if (role === 'screen') {
-            if (peerStream.getVideoTracks().length > 0) screens.set(peerId, peerStream);
-            else screens.delete(peerId);
+            lastScreen.set(peerId, peerStream);
+            // Сказал, что показ кончился, — плитке не бывать, что бы ни
+            // делала заглохшая дорожка.
+            if (screenSaid.get(peerId) !== false && peerStream.getVideoTracks().length > 0) {
+              screens.set(peerId, peerStream);
+            } else {
+              screens.delete(peerId);
+            }
           } else {
             peers.set(peerId, peerStream);
           }
@@ -453,8 +468,12 @@ export const createRoom = async ({
   screensChannel = typeof connection.action === 'function' ? connection.action('screen') : null;
   if (screensChannel) {
     screensChannel.onMessage = (on, {peerId}) => {
-      if (on) return;
-      screens.delete(peerId);
+      screenSaid.set(peerId, Boolean(on));
+      // Начал показ: дорожка могла приехать раньше слов — тогда её уже
+      // держим, и плитка появляется сразу.
+      const stream = lastScreen.get(peerId);
+      if (on && stream?.getVideoTracks().length) screens.set(peerId, stream);
+      if (!on) screens.delete(peerId);
       announce();
     };
   }

@@ -163,6 +163,15 @@ export const joinPublicChannels = ({
   // новым участникам (при claim), и участнику, у которого сменился
   // владелец (см. «призрак» в onPeerLeave).
   let localStream = null;
+  // Показ экрана — отдельно от localStream: в общем потоке пометка «экран»
+  // потерялась бы. Пока показ идёт, вошедшему его досылаем отдельной
+  // дорожкой с пометкой — иначе он видел бы лицо, но не экран.
+  let sharedScreen = null;
+  const sendScreen = (room, peerId) => {
+    if (!sharedScreen) return;
+    const {track, stream, metadata} = sharedScreen;
+    room.addTrack(track, stream, {target: peerId, metadata});
+  };
 
   const channels = families.map(({family, join, getRelaySockets = () => ({})}) => {
     const relays = relayUrlsFor(family);
@@ -197,6 +206,7 @@ export const joinPublicChannels = ({
       if (troubles.delete(peerId)) tellTroubles();
       if (!registry.claim(peerId, family)) return;
       if (localStream) room.addStream(localStream, {target: peerId});
+      sendScreen(room, peerId);
       handlers.onPeerJoin?.(peerId);
     };
     room.onPeerLeave = peerId => {
@@ -211,6 +221,7 @@ export const joinPublicChannels = ({
       if (ghost) {
         registry.claim(peerId, ghost.family);
         if (localStream) ghost.room.addStream(localStream, {target: peerId});
+        sendScreen(ghost.room, peerId);
         streamedPeers.delete(peerId);
         return;
       }
@@ -276,6 +287,7 @@ export const joinPublicChannels = ({
     // новым участникам целиком, и пометка при этом потерялась бы.
     addTrack: (track, stream, metadata) => {
       if (!metadata) localStream = stream;
+      else if (metadata.role === 'screen') sharedScreen = {track, stream, metadata};
       for (const peerId of registry.peers()) {
         roomOf(registry.ownerOf(peerId)).addTrack(track, stream, {
           target: peerId,
@@ -287,6 +299,7 @@ export const joinPublicChannels = ({
     // микрофон или камеру). Поток здесь не нужен — библиотека находит
     // отправителя по самой дорожке.
     removeTrack: track => {
+      if (sharedScreen?.track === track) sharedScreen = null;
       for (const peerId of registry.peers()) {
         roomOf(registry.ownerOf(peerId)).removeTrack(track, {target: peerId});
       }
