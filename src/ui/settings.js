@@ -64,6 +64,16 @@ export const showVisionFailure = (root, kind, reason = 'load') => {
   }
 };
 
+// Куда может встать фокус: видимые и включённые поля и кнопки. Внутри
+// свёрнутой раскрывашки браузер пускает только на её заголовок.
+const focusable = container =>
+  [...container.querySelectorAll('button, input, select, textarea, summary, a[href]')].filter(
+    el =>
+      !el.disabled &&
+      !container.contains(el.closest('[hidden]')) &&
+      !(el.tagName !== 'SUMMARY' && el.closest('details:not([open])')),
+  );
+
 export const createSettings = (root, actions) => {
   const panel = root.querySelector('#settings');
   const nameInput = root.querySelector('#name-input');
@@ -90,7 +100,12 @@ export const createSettings = (root, actions) => {
     flowLine.textContent = text;
   };
 
+  // Кнопка, которой открыли: после закрытия фокус возвращается к ней, а не
+  // падает в начало страницы — иначе человек с клавиатуры теряет место.
+  let opener = null;
+
   const open = async () => {
+    opener = root.ownerDocument.activeElement;
     nameInput.placeholder = actions.nameHint();
     nameInput.value = actions.currentName();
     if (mirror) mirror.checked = Boolean(actions.currentMirror?.());
@@ -107,10 +122,36 @@ export const createSettings = (root, actions) => {
   };
 
   const close = () => {
+    const wasOpen = !panel.hidden;
     panel.hidden = true;
     clearInterval(flowTimer);
     flowTimer = null;
+    if (wasOpen && opener?.isConnected) opener.focus();
+    opener = null;
   };
+
+  // Окно модальное: Escape закрывает, а Tab ходит по кругу внутри, не
+  // уводя фокус на кнопки за затемнением, которых не видно.
+  panel.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const stops = focusable(panel);
+    if (!stops.length) return;
+    const first = stops[0];
+    const last = stops.at(-1);
+    const here = root.ownerDocument.activeElement;
+    if (event.shiftKey && here === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && here === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
 
   // Имя применяем на каждый ввод: человек видит его на своей плитке сразу
   // и не гадает, сохранилось ли. Пустое поле — тоже ответ: «зовите как

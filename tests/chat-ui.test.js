@@ -188,3 +188,44 @@ describe('значок в ленте', () => {
     expect(слово.querySelector('.msg-reaction')).toBe(null);
   });
 });
+
+describe('переписка с клавиатуры', () => {
+  it('Escape закрывает переписку и возвращает фокус на её кнопку', () => {
+    document.body.innerHTML = HTML.match(/<body[^>]*>([\s\S]*)<\/body>/)[1];
+    const el = document.querySelector('#screen-call');
+    const chat = createChat(el, {});
+    chat.open();
+
+    document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+
+    expect(el.querySelector('#chat').hidden).toBe(true);
+    expect(document.activeElement).toBe(el.querySelector('#chat-open'));
+  });
+});
+
+describe('лента для экранного диктора', () => {
+  it('новое сообщение дописывается, старые пузыри не пересоздаются', () => {
+    const el = root();
+    const первое = msg();
+    renderChat(el, {messages: [первое]});
+    const пузырь = el.querySelector('.msg');
+
+    renderChat(el, {messages: [первое, msg({text: 'ещё'})]});
+
+    expect(el.querySelectorAll('.msg')).toHaveLength(2);
+    expect(el.querySelector('.msg')).toBe(пузырь);
+  });
+
+  it('дописывает по порядку и убирает вытесненные', () => {
+    const el = root();
+    const [a, b, c] = ['раз', 'два', 'три'].map(text => msg({text}));
+    renderChat(el, {messages: [a, b]});
+    renderChat(el, {messages: [b, c]});
+
+    expect([...el.querySelectorAll('.msg span:last-child')].map(n => n.textContent)).toEqual(['два', 'три']);
+  });
+
+  it('лента объявлена журналом, чтобы новое читалось само', () => {
+    expect(root().querySelector('#chat-log').getAttribute('role')).toBe('log');
+  });
+});

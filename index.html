@@ -142,7 +142,7 @@
             Каналы связи пока молчат. Попытки продолжаются — если так и не
             выйдет, загляните в проверку связи.
           </p>
-          <div class="invite-trouble" id="trouble" hidden>
+          <div class="invite-trouble" id="trouble" role="status" hidden>
             <p class="invite-trouble-title" id="trouble-title"></p>
             <p class="invite-trouble-advice" id="trouble-advice"></p>
           </div>
@@ -154,7 +154,7 @@
              остаётся у говорящего, с девяти идёт один звук. Пока об этом
              не было сказано ни слова, и выглядело это как поломка — все
              плитки тёмные, и непонятно, кто виноват. -->
-        <p id="mode" class="mode" hidden></p>
+        <p id="mode" class="mode" role="status" hidden></p>
 
         <!-- Кто пропал и как: сам ушёл или связь прервалась. Без этой строки
              плитка исчезала молча, и одно было не отличить от другого. -->
@@ -171,7 +171,7 @@
               <svg class="i"><use href="#i-close" /></svg>
             </button>
           </header>
-          <div id="chat-log" class="chat-log"></div>
+          <div id="chat-log" class="chat-log" role="log" aria-label="Сообщения"></div>
           <p class="chat-empty" id="chat-empty">
             Здесь можно написать, когда говорить неудобно. Переписка нигде не
             сохраняется и уходит вместе с разговором.

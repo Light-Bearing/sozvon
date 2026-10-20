@@ -14,7 +14,7 @@
 
   --text: #f2f0f4;
   --dim: #9a96a3;
-  --faint: #6c6877;
+  --faint: #8e8a97;
 
   --live: #5bd08a;
   --leave: #f0614f;
@@ -150,7 +150,8 @@ body {
   font-size: 0.875rem;
   background: none;
   border: 0;
-  padding: 0;
+  /* Строка текста ниже 24 пикселей — по ней промахиваются пальцем. */
+  padding: 0.25rem 0;
   color: var(--dim);
   cursor: pointer;
   text-decoration: underline;
@@ -1011,6 +1012,16 @@ select.field-input {
 /* В полоске места нет ни на что, кроме кнопки. */
 .tiles[data-pinned]:not([data-pinned='']) .tile:not(.tile--pinned) .tile-gear {
   display: none;
+}
+
+/* Текст для экранного диктора: на экране его нет, в чтении — есть. */
+.unseen {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* ── крупно и обратно ───────────────────────────────────── */

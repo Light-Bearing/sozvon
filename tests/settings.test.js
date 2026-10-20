@@ -309,3 +309,52 @@ describe('распознавание не заработало — перекл�
     expect(root.querySelector('#face-follow-note').textContent).not.toMatch(/сеть/);
   });
 });
+
+describe('настройки с клавиатуры', () => {
+  const собрать = () => {
+    document.body.innerHTML = HTML.match(/<body[^>]*>([\s\S]*)<\/body>/)[1];
+    const el = document.querySelector('#app');
+    const panel = createSettings(el, {
+      currentName: () => '',
+      nameHint: () => 'Сонная Выдра',
+      currentDevices: () => ({microphone: null, camera: null, speaker: null}),
+      setName: () => {},
+      setDevice: () => {},
+    });
+    return {el, panel};
+  };
+  const нажать = (target, key, extra = {}) =>
+    target.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true, ...extra}));
+
+  it('Escape закрывает и возвращает фокус на кнопку, которой открыли', async () => {
+    const {el, panel} = собрать();
+    const кнопка = el.querySelector('#settings-open');
+    кнопка.focus();
+    await panel.open();
+
+    нажать(document.activeElement, 'Escape');
+
+    expect(el.querySelector('#settings').hidden).toBe(true);
+    expect(document.activeElement).toBe(кнопка);
+  });
+
+  it('Tab с последней кнопки уходит на первое поле, а не за окно', async () => {
+    const {el, panel} = собрать();
+    await panel.open();
+    const последняя = el.querySelector('#settings-close');
+    последняя.focus();
+
+    нажать(последняя, 'Tab');
+
+    expect(document.activeElement).toBe(el.querySelector('#name-input'));
+  });
+
+  it('Shift+Tab с первого поля уходит на последнюю кнопку', async () => {
+    const {el, panel} = собрать();
+    await panel.open();
+
+    нажать(el.querySelector('#name-input'), 'Tab', {shiftKey: true});
+
+    expect(document.activeElement).toBe(el.querySelector('#settings-close'));
+  });
+});

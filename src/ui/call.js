@@ -60,9 +60,11 @@ const makeTile = (id, isSelf) => {
   // молчащей дорожке одно от другого не отличить.
   const gear = document.createElement('span');
   gear.className = 'tile-gear';
+  // Значки — для глаз; рядом та же новость словами для экранного диктора.
   gear.innerHTML =
-    '<svg class="i i-mute"><use href="#i-mic-off" /></svg>' +
-    '<svg class="i i-blind"><use href="#i-cam-off" /></svg>';
+    '<svg class="i i-mute" aria-hidden="true"><use href="#i-mic-off" /></svg>' +
+    '<svg class="i i-blind" aria-hidden="true"><use href="#i-cam-off" /></svg>' +
+    '<span class="unseen"></span>';
 
   // Крупно — и обратно. Кнопка, а не клик по всей плитке: по плитке
   // промахиваются пальцем, а объявить её читалке экрана нечем.
@@ -163,6 +165,29 @@ const applyShift = tiles => {
 
 // Полоску можно двигать: при показе экрана она закрывает как раз то, что
 // пришли смотреть, и человек должен мочь её отодвинуть.
+// Края ленты без сдвига. Считаем один раз на старте перетаскивания: пока
+// тянут, раскладка не меняется — меняется только сдвиг, и мерить её на
+// каждом событии значило бы мерить десятки раз в секунду впустую.
+const edges = tiles => {
+  const края = [...tiles.querySelectorAll('.tile:not(.tile--pinned)')].map(t => t.getBoundingClientRect());
+  return {
+    left: Math.min(...края.map(r => r.left)) - shift.x,
+    top: Math.min(...края.map(r => r.top)) - shift.y,
+    right: Math.max(...края.map(r => r.right)) - shift.x,
+    bottom: Math.max(...края.map(r => r.bottom)) - shift.y,
+  };
+};
+
+// Полоска не должна уезжать за край: оттуда её не вернуть.
+const moveTo = (tiles, box, x, y) => {
+  const зажать = (want, low, high) => Math.min(Math.max(want, low), high);
+  shift.x = зажать(x, -box.left, window.innerWidth - box.right);
+  shift.y = зажать(y, -box.top, window.innerHeight - box.bottom);
+  applyShift(tiles);
+};
+
+const KEY_STEP = {ArrowLeft: [-40, 0], ArrowRight: [40, 0], ArrowUp: [0, -40], ArrowDown: [0, 40]};
+
 const makeDraggable = tiles => {
   if (tiles.dataset.draggable) return;
   tiles.dataset.draggable = 'да';
@@ -176,39 +201,24 @@ const makeDraggable = tiles => {
     // Кнопке — нажатие, а не перетаскивание.
     if (event.target.closest('.tile-pin')) return;
 
-    // Границы считаем один раз, на старте: пока тянут, раскладка не
-    // меняется — меняется только сдвиг, и пересчитывать её на каждом
-    // событии значило бы мерить десятки раз в секунду впустую.
-    const мелкие = [...tiles.querySelectorAll('.tile:not(.tile--pinned)')];
-    const края = мелкие.map(t => t.getBoundingClientRect());
-    from = {
-      x: event.clientX,
-      y: event.clientY,
-      shiftX: shift.x,
-      shiftY: shift.y,
-      left: Math.min(...края.map(r => r.left)) - shift.x,
-      top: Math.min(...края.map(r => r.top)) - shift.y,
-      right: Math.max(...края.map(r => r.right)) - shift.x,
-      bottom: Math.max(...края.map(r => r.bottom)) - shift.y,
-    };
+    from = {x: event.clientX, y: event.clientY, shiftX: shift.x, shiftY: shift.y, ...edges(tiles)};
     tiles.setPointerCapture?.(event.pointerId);
   });
 
   tiles.addEventListener('pointermove', event => {
     if (!from) return;
-    const зажать = (want, low, high) => Math.min(Math.max(want, low), high);
-    // Полоска не должна уезжать за край: оттуда её не вернуть.
-    shift.x = зажать(
-      from.shiftX + event.clientX - from.x,
-      -from.left,
-      window.innerWidth - from.right,
-    );
-    shift.y = зажать(
-      from.shiftY + event.clientY - from.y,
-      -from.top,
-      window.innerHeight - from.bottom,
-    );
-    applyShift(tiles);
+    moveTo(tiles, from, from.shiftX + event.clientX - from.x, from.shiftY + event.clientY - from.y);
+  });
+
+  // С клавиатуры — стрелками, пока фокус на ленте: перетаскивание мышью
+  // не должно быть единственным способом убрать ленту с лица собеседника.
+  tiles.addEventListener('keydown', event => {
+    const step = KEY_STEP[event.key];
+    if (!step || !tiles.dataset.pinned) return;
+    const box = event.target.closest?.('.tile');
+    if (!box || box.classList.contains('tile--pinned')) return;
+    event.preventDefault();
+    moveTo(tiles, edges(tiles), shift.x + step[0], shift.y + step[1]);
   });
 
   const finish = event => {
@@ -379,6 +389,9 @@ const updateTile = (box, {stream, label, isSelf, speaker, speaking, mirror, reac
   gear.classList.toggle('tile-gear--mute', mute);
   gear.classList.toggle('tile-gear--blind', blind);
   gear.hidden = !mute && !blind;
+  const said = mute && blind ? 'микрофон и камера выключены' : mute ? 'микрофон выключен' : blind ? 'камера выключена' : '';
+  const words = gear.querySelector('.unseen');
+  if (words.textContent !== said) words.textContent = said;
 };
 
 // Собеседник назвался — зовём как просил. Не назвался (имя ещё не дошло

@@ -24,6 +24,9 @@ const bubble = ({text, from, mine, at}) => {
   return box;
 };
 
+// Что уже нарисовано в ленте: сообщение → его пузырь.
+const drawn = new WeakMap();
+
 export const renderChat = (container, state) => {
   const log = container.querySelector('#chat-log');
   if (!log) return;
@@ -33,7 +36,24 @@ export const renderChat = (container, state) => {
   // чтение старого рвалось бы на каждом новом сообщении.
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
 
-  log.replaceChildren(...messages.map(bubble));
+  // Дописываем только новое, а не пересобираем ленту: она рисуется на
+  // каждом кадре разговора, и экранный диктор, следящий за лентой, читал
+  // бы всю переписку заново с каждой перерисовкой.
+  const shown = drawn.get(log) ?? new Map();
+  const wanted = new Set(messages);
+  for (const [message, node] of shown) {
+    if (!wanted.has(message)) {
+      node.remove();
+      shown.delete(message);
+    }
+  }
+  for (const message of messages) {
+    if (shown.has(message)) continue;
+    const node = bubble(message);
+    log.append(node);
+    shown.set(message, node);
+  }
+  drawn.set(log, shown);
   container.querySelector('#chat-empty').hidden = messages.length > 0;
   if (atBottom) log.scrollTop = log.scrollHeight;
 
@@ -58,6 +78,15 @@ export const createChat = (root, actions) => {
   const close = () => {
     panel.hidden = true;
   };
+
+  // Escape закрывает переписку, и фокус возвращается на её кнопку, чтобы
+  // человек с клавиатуры остался там, откуда пришёл.
+  panel.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    close();
+    root.querySelector('#chat-open')?.focus();
+  });
 
   const send = () => {
     if (!actions.say?.(text.value)) return;

@@ -752,6 +752,29 @@ describe('полоску участников можно отодвинуть', 
     expect(tiles.style.getPropertyValue('--dy')).toBe('720px');
   });
 
+  it('стрелками с клавиатуры — тоже смещается, без мыши', () => {
+    const {tiles} = сцена();
+    const кнопка = tiles.querySelector('[data-peer="self"] .tile-pin');
+    const стрелка = key => кнопка.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true}));
+
+    стрелка('ArrowRight');
+    стрелка('ArrowRight');
+    стрелка('ArrowDown');
+
+    expect(tiles.style.getPropertyValue('--dx')).toBe('80px');
+    expect(tiles.style.getPropertyValue('--dy')).toBe('40px');
+  });
+
+  it('стрелкой за край тоже не уходит', () => {
+    const {tiles} = сцена();
+    const кнопка = tiles.querySelector('[data-peer="self"] .tile-pin');
+
+    кнопка.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowLeft', bubbles: true, cancelable: true}));
+
+    // Левый край полоски — 20 пикселей от края окна.
+    expect(tiles.style.getPropertyValue('--dx')).toBe('-20px');
+  });
+
   it('сняли закрепление — полоска возвращается в угол', () => {
     const {el, tiles} = сцена();
     тянем(tiles.querySelector('[data-peer="self"]'), [60, 50], [160, 250]);
@@ -787,6 +810,16 @@ describe('значки микрофона и камеры на плитке', ()
     expect(значки.hidden).toBe(false);
     expect(значки.classList.contains('tile-gear--mute')).toBe(true);
     expect(значки.classList.contains('tile-gear--blind')).toBe(false);
+  });
+
+  it('выключенное читается и экранным диктором, а не только глазами', () => {
+    const el = root();
+
+    renderCall(el, baseState({peers: [собеседник({mic: false, cam: false})]}), fakeActions());
+
+    const значки = el.querySelector('[data-peer="петя"] .tile-gear');
+    expect(значки.textContent.trim()).toBe('микрофон и камера выключены');
+    for (const svg of значки.querySelectorAll('svg')) expect(svg.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('собеседник ещё не сказал о себе — молчим, а не врём', () => {
