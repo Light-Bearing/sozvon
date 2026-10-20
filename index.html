@@ -130,18 +130,32 @@
         <video id="backdrop" class="backdrop" autoplay playsinline muted></video>
 
         <div id="invite" class="invite">
-          <p class="invite-eyebrow">Ссылка на разговор</p>
+          <p class="invite-eyebrow" id="invite-eyebrow">Ссылка на разговор</p>
           <p id="link" class="invite-link"></p>
           <button data-copy class="act act--primary act--icon" type="button">
             <svg class="i i-idle"><use href="#i-copy" /></svg>
             <svg class="i i-done"><use href="#i-check" /></svg>
             <span data-copy-label>Скопировать ссылку</span>
           </button>
-          <p class="invite-state" id="waiting"><i class="pulse"></i>Жду, когда зайдут</p>
-          <p class="invite-quiet" id="quiet" hidden>
-            Каналы связи пока молчат. Попытки продолжаются — если так и не
-            выйдет, загляните в проверку связи.
-          </p>
+          <p class="invite-state" id="waiting"><i class="pulse"></i><span id="waiting-text">Жду, когда зайдут</span></p>
+          <div class="invite-quiet" id="quiet" hidden>
+            <p>
+              Каналы связи пока молчат. Попытки продолжаются — если так и не
+              выйдет, можно обойтись без них: обменяться с собеседником
+              кодами через любой мессенджер.
+            </p>
+            <button id="by-hand" class="link" type="button">Обменяться кодами вручную</button>
+          </div>
+          <!-- Обмен вручную: хозяин вставляет сюда ответ гостя. -->
+          <form id="answer" class="invite-answer" hidden>
+            <label class="field">
+              <span class="field-label">Ответ собеседника</span>
+              <textarea id="answer-text" class="field-input invite-answer-text" rows="3"
+                        autocomplete="off" spellcheck="false"></textarea>
+            </label>
+            <p class="invite-answer-error" id="answer-error" role="alert" hidden></p>
+            <button id="answer-go" class="act act--primary" type="submit">Соединить</button>
+          </form>
           <div class="invite-trouble" id="trouble" role="status" hidden>
             <p class="invite-trouble-title" id="trouble-title"></p>
             <p class="invite-trouble-advice" id="trouble-advice"></p>

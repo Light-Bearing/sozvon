@@ -401,6 +401,25 @@ body {
 
 @keyframes lift { from { opacity: 0; translate: 0 10px; } }
 
+/* Обмен вручную: код длинный, на полкарточки — пусть прокручивается сам,
+   а не выталкивает остальное. */
+.invite[data-manual] .invite-link {
+  max-height: 6.8em;
+  overflow-y: auto;
+}
+
+.invite-quiet p { margin: 0 0 0.5rem; }
+
+.invite-answer { margin-block-start: 1rem; display: grid; gap: 0.75rem; }
+.invite-answer .field { margin: 0; }
+.invite-answer-text {
+  min-height: 4.5rem;
+  resize: vertical;
+  font-family: 'Martian Mono', ui-monospace, monospace;
+  font-size: 0.75rem;
+}
+.invite-answer-error { margin: 0; font-size: 0.875rem; color: var(--leave); }
+
 .invite-eyebrow {
   margin-block: 0;
   font-size: 0.75rem;

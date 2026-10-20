@@ -970,3 +970,55 @@ describe('строка «кто пропал»', () => {
     expect(el.querySelector('#notice img')).toBe(null);
   });
 });
+
+describe('обмен кодами вручную', () => {
+  it('обычный разговор — поля для ответа нет, кнопка обмена внутри «каналы молчат»', () => {
+    const el = root();
+    renderCall(el, baseState({quiet: true}), fakeActions());
+
+    expect(el.querySelector('#answer').hidden).toBe(true);
+    expect(el.querySelector('#quiet').hidden).toBe(false);
+    expect(el.querySelector('#quiet #by-hand')).not.toBe(null);
+  });
+
+  it('хозяин видит свою ссылку и поле для ответа', () => {
+    const el = root();
+    renderCall(el, baseState({manual: 'host', link: 'https://sozvon.test/#m.код'}), fakeActions());
+
+    expect(el.querySelector('#invite-eyebrow').textContent).toBe('Ссылка для обмена вручную');
+    expect(el.querySelector('#answer').hidden).toBe(false);
+    expect(el.querySelector('#waiting-text').textContent).toMatch(/Вставьте его ниже/);
+  });
+
+  it('гость видит свой ответ и кнопку «скопировать ответ», поля нет', () => {
+    const el = root();
+    renderCall(el, baseState({manual: 'guest', link: 'кодответа'}), fakeActions());
+
+    expect(el.querySelector('#invite-eyebrow').textContent).toBe('Ваш ответ');
+    expect(el.querySelector('#invite [data-copy-label]').textContent).toBe('Скопировать ответ');
+    expect(el.querySelector('#answer').hidden).toBe(true);
+  });
+
+  it('пока адреса собираются — так и написано, а не пустое место', () => {
+    const el = root();
+    renderCall(el, baseState({manual: 'host', link: ''}), fakeActions());
+
+    expect(el.querySelector('#link').textContent).toBe('Готовлю код…');
+  });
+
+  it('каналы молчат, но обмен уже идёт — второй раз его не предлагаем', () => {
+    const el = root();
+    renderCall(el, baseState({manual: 'host', quiet: true, link: 'x'}), fakeActions());
+
+    expect(el.querySelector('#quiet').hidden).toBe(true);
+  });
+
+  it('вернулись к обычному разговору — подписи обычные', () => {
+    const el = root();
+    renderCall(el, baseState({manual: 'guest', link: 'x'}), fakeActions());
+    renderCall(el, baseState(), fakeActions());
+
+    expect(el.querySelector('#invite-eyebrow').textContent).toBe('Ссылка на разговор');
+    expect(el.querySelector('#invite').dataset.manual).toBe(undefined);
+  });
+});

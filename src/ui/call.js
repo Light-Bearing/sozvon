@@ -408,9 +408,25 @@ const bindToggle = (button, pressed, act) => {
   button.onclick = act;
 };
 
+// Что написано в карточке приглашения — обычной и при обмене вручную.
+const MANUAL_WORDS = {
+  none: {eyebrow: 'Ссылка на разговор', copy: 'Скопировать ссылку', waiting: 'Жду, когда зайдут'},
+  host: {
+    eyebrow: 'Ссылка для обмена вручную',
+    copy: 'Скопировать ссылку',
+    waiting: 'Отправьте ссылку собеседнику — он пришлёт в ответ код. Вставьте его ниже',
+  },
+  guest: {
+    eyebrow: 'Ваш ответ',
+    copy: 'Скопировать ответ',
+    waiting: 'Отправьте этот код тому, кто вас позвал. Разговор начнётся, как только он его вставит',
+  },
+};
+
 const bindCopy = (container, link) => {
   for (const button of container.querySelectorAll('[data-copy]')) {
     button.onclick = async () => {
+      if (!link) return;
       await navigator.clipboard.writeText(link);
       const label = button.querySelector('[data-copy-label]');
       const was = label?.textContent;
@@ -564,7 +580,21 @@ export const renderCall = (container, state, actions) => {
   // ссылка нужна тут же, под объяснением.
   const trouble = state.troubles?.length ? state.troubles : null;
 
-  container.querySelector('#link').textContent = state.link;
+  // Обмен вручную: вместо ссылки на комнату — то, что человек отправит сам.
+  const manual = state.manual ?? null;
+  const invite = container.querySelector('#invite');
+  if (manual) invite.dataset.manual = manual;
+  else delete invite.dataset.manual;
+  const words = MANUAL_WORDS[manual] ?? MANUAL_WORDS.none;
+  container.querySelector('#invite-eyebrow').textContent = words.eyebrow;
+  const copyLabel = container.querySelector('#invite [data-copy-label]');
+  if (copyLabel && !copyLabel.closest('.is-done')) copyLabel.textContent = words.copy;
+  const waitingText = container.querySelector('#waiting-text');
+  if (waitingText) waitingText.textContent = words.waiting;
+  const answer = container.querySelector('#answer');
+  if (answer) answer.hidden = manual !== 'host' || !alone;
+
+  container.querySelector('#link').textContent = state.link || 'Готовлю код…';
   container.querySelector('#invite').hidden = !alone && !trouble;
   container.querySelector('.ctl--copy').hidden = alone;
 
@@ -580,7 +610,7 @@ export const renderCall = (container, state, actions) => {
   // Названная беда важнее обоих: она объясняет ровно то, чего ждать уже
   // бессмысленно.
   container.querySelector('#waiting').hidden = Boolean(state.quiet || trouble);
-  container.querySelector('#quiet').hidden = !state.quiet || Boolean(trouble);
+  container.querySelector('#quiet').hidden = !state.quiet || Boolean(trouble) || Boolean(manual);
 
   bindCopy(container, state.link);
 

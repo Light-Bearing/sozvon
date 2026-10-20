@@ -1,4 +1,6 @@
 import {generateSecret, linkToSecret, passFromLink} from './room-secret.js';
+import {codeFromLink, unpack} from './signal/manual.js';
+import {connectByHand} from './signal/by-hand.js';
 import {createRoom} from './room.js';
 import {createAwake} from './awake.js';
 import {familiesFor, parseFamilyNames} from './signal/public-channels.js';
@@ -125,6 +127,9 @@ const invited = linkToSecret(location.href);
 // Пропуск к ретранслятору, если его принесло приглашение. Читаем сразу, по
 // той же причине, что и секрет: потом в адресе может оказаться что угодно.
 const invitedPass = unpackPass(passFromLink(location.href));
+// Приглашение для обмена вручную: в хвосте не секрет комнаты, а описание
+// соединения хозяина (и, может быть, пропуск к ретранслятору через точку).
+const [handOffer = null, handPass = null] = codeFromLink(location.href)?.split('.') ?? [];
 
 // Одна точка отрисовки экрана звонка — ею пользуется и комната (на каждое
 // изменение), и настройки, когда меняется то, чем комната не распоряжается.
@@ -194,8 +199,12 @@ const fail = error => {
 // телефон успел отобрать.
 const awake = createAwake({onWake: () => void room?.wake()});
 
-const enter = async secret => {
-  location.hash = secret;
+// byHand — обмен вручную: {role: 'host'} или {role: 'guest', offer, pass}.
+// Без него — обычный разговор через публичные каналы.
+const enter = async (secret, byHand = null) => {
+  // При обмене вручную секрет комнаты не нужен никому, и в адресе ему
+  // делать нечего: у гостя там приглашение, и стирать его нельзя.
+  if (!byHand) location.hash = secret;
   showScreen(app, 'call');
   // Кнопка «обновить» посреди звонка — приглашение его оборвать.
   app.querySelector('#update')?.setAttribute('hidden', '');
@@ -203,18 +212,38 @@ const enter = async secret => {
     // Пропуск к ретранслятору. У хозяина — свежий, выписанный своим ключом
     // на этот разговор (живёт полсуток). У гостя — тот, что пришёл в
     // приглашении. Нет ни того ни другого — звонок идёт напрямую, как раньше.
-    const pass = (await passFor(relay)) ?? invitedPass;
+    const pass =
+      byHand?.role === 'guest' ? unpackPass(byHand.pass) : ((await passFor(relay)) ?? invitedPass);
     useRelay(serversFromPass(pass));
     const packed = pass ? packPass(pass) : null;
     // Пропуск остаётся и в адресе: перезагрузи гость страницу — и без него
     // он остался бы без ретранслятора посреди разговора. replaceState, а не
     // hash: это та же страница, лишний шаг «назад» тут ни к чему.
-    if (packed) history.replaceState(null, '', `#${secret}.${packed}`);
+    if (packed && !byHand) history.replaceState(null, '', `#${secret}.${packed}`);
+
+    let connectFn;
+    if (byHand) {
+      let offer = null;
+      if (byHand.role === 'guest') {
+        try {
+          offer = await unpack(byHand.offer);
+        } catch {
+          throw Object.assign(new Error('Код в ссылке испорчен'), {name: 'ManualCodeError'});
+        }
+      }
+      connectFn = connectByHand({
+        role: byHand.role,
+        offer,
+        servers: serversFromPass(pass),
+        pass: byHand.role === 'host' ? packed : null,
+      });
+    }
 
     room = await createRoom({
       secret,
       families,
       pass: packed,
+      ...(connectFn ? {connectFn} : {}),
       // Намерение по микрофону/камере целиком живёт в room.js (createRoom
       // заводит его заново на каждый звонок) и приходит сюда через state —
       // отдельной копии в main.js больше нет, поэтому её нечему рассогласовать
@@ -293,8 +322,31 @@ app.querySelector('#retry').onclick = () => {
   // стереть, после перезагрузки будет неоткуда собрать экран приглашения
   // заново. Хозяину, наоборот, нужно стереть — то, что осталось в хвосте,
   // это след его собственной неудачной попытки, а не чьё-то приглашение.
-  if (!invited) location.hash = '';
+  if (!invited && !handOffer) location.hash = '';
   location.reload();
+};
+
+// Каналы молчат — обходимся без них: тот же разговор, но рукопожатие везёт
+// сам человек. Прежняя попытка через каналы при этом закрывается.
+app.querySelector('#by-hand').onclick = async () => {
+  const before = room;
+  room = null;
+  await before?.leave();
+  void enter(generateSecret(), {role: 'host'});
+};
+
+app.querySelector('#answer').onsubmit = async event => {
+  event.preventDefault();
+  const field = app.querySelector('#answer-text');
+  const error = app.querySelector('#answer-error');
+  error.hidden = true;
+  try {
+    await room?.acceptAnswer(field.value);
+    field.value = '';
+  } catch (problem) {
+    error.textContent = problem?.message || 'Код не подошёл — попросите прислать его ещё раз';
+    error.hidden = false;
+  }
 };
 
 let screenBeforeDiagnostics = 'start';
@@ -317,7 +369,11 @@ app.querySelector('#diagnostics-close').onclick = () =>
 // Гость видит, кто зовёт, и жмёт кнопку — вход в разговор молчаливый,
 // браузер пока ни о чём не спрашивает. Камеру и микрофон человек включит
 // сам, уже внутри звонка, отдельным нажатием на нужную кнопку.
-if (invited) {
+if (handOffer) {
+  app.querySelector('#join').onclick = () =>
+    void enter(generateSecret(), {role: 'guest', offer: handOffer, pass: handPass});
+  showScreen(app, 'join');
+} else if (invited) {
   app.querySelector('#join').onclick = () => void enter(invited);
   showScreen(app, 'join');
 } else {

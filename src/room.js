@@ -87,7 +87,11 @@ export const createRoom = async ({
   let speaking = [];
 
   const state = () => ({
-    link: secretToLink(secret, undefined, pass),
+    // При обмене вручную вместо ссылки на комнату — то, что везёт человек:
+    // у хозяина ссылка с его описанием, у гостя код ответа. Пока адреса
+    // собираются, его ещё нет.
+    link: connection?.manual ? (connection.invite() ?? '') : secretToLink(secret, undefined, pass),
+    manual: connection?.manual ?? null,
     quiet,
     troubles,
     flow,
@@ -268,6 +272,8 @@ export const createRoom = async ({
         announce();
       },
       handlers: {
+        // Обмен вручную: код готов — его пора показать.
+        onChanged: () => announce(),
         onTrouble: list => {
           // Раньше здесь оставались только виды бед, а с кем именно не
           // вышло — терялось. В разговоре на пятерых это и подвело: двое
@@ -825,6 +831,9 @@ export const createRoom = async ({
       void memeChannel?.send(clean);
       announce();
     },
+
+    // Обмен вручную: хозяин вставил ответ гостя.
+    acceptAnswer: text => connection.accept(text),
 
     sayBye: () => {
       try {

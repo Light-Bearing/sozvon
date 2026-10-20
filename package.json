@@ -12,7 +12,8 @@
     "build": "vite build",
     "build:single": "vite build --config vite.config.single.js",
     "check:call": "node tools/call-check.mjs",
-    "check:mesh": "node tools/mesh-check.mjs"
+    "check:mesh": "node tools/mesh-check.mjs",
+    "check:hand": "node tools/manual-check.mjs"
   },
   "keywords": [],
   "author": "",
