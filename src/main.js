@@ -162,6 +162,8 @@ const paint = state => {
     {
       toggleMicrophone: () => room.setMicrophone(!state.mic),
       toggleCamera: () => room.setCamera(!state.cam),
+      flipCamera: () => room.flipCamera(),
+      setZoom: value => room.setZoom(value),
       toggleScreen: () => void room.setScreen(!state.screen),
       togglePin: id => {
         pinned = pinned === id ? null : id;

@@ -2,7 +2,7 @@
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {describe, expect, it, vi} from 'vitest';
-import {forgetShift, renderCall} from '../src/ui/call.js';
+import {forgetShift, nextZoom, renderCall, zoomSteps} from '../src/ui/call.js';
 import {explainTrouble} from '../src/ui/screens.js';
 import {STEPS} from '../src/ladder.js';
 
@@ -1048,5 +1048,88 @@ describe('обмен кодами вручную', () => {
 
     expect(el.querySelector('#invite-eyebrow').textContent).toBe('Ссылка на разговор');
     expect(el.querySelector('#invite').dataset.manual).toBe(undefined);
+  });
+});
+
+describe('своя камера на телефоне', () => {
+  const живая = () => ({
+    getVideoTracks: () => [{kind: 'video', enabled: true, readyState: 'live'}],
+    getAudioTracks: () => [],
+    getTracks: () => [],
+  });
+  const своя = el => el.querySelector('[data-peer="self"]');
+
+  it('камер две и камера включена — есть «другая камера», нажатие уходит наверх', () => {
+    const el = root();
+    const actions = {...fakeActions(), flipCamera: vi.fn()};
+    renderCall(el, baseState({self: живая(), cam: true, canFlip: true}), actions);
+
+    const кнопка = своя(el).querySelector('.tile-flip');
+    expect(кнопка.hidden).toBe(false);
+    кнопка.click();
+    expect(actions.flipCamera).toHaveBeenCalled();
+  });
+
+  it('камера одна или выключена — кнопки нет', () => {
+    const el = root();
+    renderCall(el, baseState({self: живая(), cam: true, canFlip: false}), fakeActions());
+    expect(своя(el).querySelector('.tile-flip').hidden).toBe(true);
+
+    renderCall(el, baseState({self: живая(), cam: false, canFlip: true}), fakeActions());
+    expect(своя(el).querySelector('.tile-flip').hidden).toBe(true);
+  });
+
+  it('у чужих плиток кнопок камеры нет вовсе', () => {
+    const el = root();
+    renderCall(el, baseState({peers: [{peerId: 'петя', stream: живая(), name: null}], canFlip: true}), fakeActions());
+
+    expect(el.querySelector('[data-peer="петя"] .tile-tools')).toBe(null);
+  });
+
+  it('приближение: показывает текущее и шагает к следующему', () => {
+    const el = root();
+    const actions = {...fakeActions(), setZoom: vi.fn()};
+    renderCall(el, baseState({self: живая(), cam: true, zoom: {min: 1, max: 8, value: 1}}), actions);
+
+    const кнопка = своя(el).querySelector('.tile-zoom');
+    expect(кнопка.hidden).toBe(false);
+    expect(кнопка.textContent).toBe('1×');
+    expect(кнопка.getAttribute('aria-label')).toBe('Приближение 1×, нажмите для 2×');
+    кнопка.click();
+    expect(actions.setZoom).toHaveBeenCalledWith(2);
+  });
+
+  it('камера без приближения — кнопки приближения нет', () => {
+    const el = root();
+    renderCall(el, baseState({self: живая(), cam: true, zoom: null}), fakeActions());
+
+    expect(своя(el).querySelector('.tile-zoom').hidden).toBe(true);
+  });
+
+  it('заднюю камеру не зеркалим, даже если зеркало включено', () => {
+    const el = root();
+    renderCall(el, baseState({self: живая(), cam: true, mirror: true, facing: 'environment'}), fakeActions());
+    expect(своя(el).classList.contains('tile--mirror')).toBe(false);
+
+    renderCall(el, baseState({self: живая(), cam: true, mirror: true, facing: 'user'}), fakeActions());
+    expect(своя(el).classList.contains('tile--mirror')).toBe(true);
+  });
+});
+
+describe('ступеньки приближения', () => {
+  it('как в камере телефона, но не дальше, чем умеет камера', () => {
+    expect(zoomSteps({min: 1, max: 8})).toEqual([1, 2, 3, 5]);
+    expect(zoomSteps({min: 1, max: 10})).toEqual([1, 2, 3, 5, 10]);
+  });
+
+  it('приближение меньше двух — две ступеньки: от и до', () => {
+    expect(zoomSteps({min: 1, max: 1.5})).toEqual([1, 1.5]);
+  });
+
+  it('с последней ступеньки — обратно к началу', () => {
+    expect(nextZoom({min: 1, max: 8, value: 1})).toBe(2);
+    expect(nextZoom({min: 1, max: 8, value: 5})).toBe(1);
+    // Пальцем выставили промежуточное — следующая ступенька выше.
+    expect(nextZoom({min: 1, max: 8, value: 2.4})).toBe(3);
   });
 });

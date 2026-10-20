@@ -1043,6 +1043,44 @@ select.field-input {
   white-space: nowrap;
 }
 
+/* ── своя камера: другая сторона и приближение ──────────── */
+
+.tile-tools {
+  position: absolute;
+  z-index: 2;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.tile-flip,
+.tile-zoom {
+  min-width: 2.25rem;
+  height: 2.25rem;
+  display: grid;
+  place-items: center;
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: rgba(10, 9, 12, 0.6);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+.tile-flip { padding: 0; }
+.tile-flip .i { width: 1.15rem; height: 1.15rem; }
+.tile-flip:hover,
+.tile-zoom:hover { background: rgba(10, 9, 12, 0.8); }
+
+/* В мелкой ленте рядом с крупной плиткой — без кнопок: на крошечной
+   плитке они закрыли бы всё лицо. Закрепите свою — и они вернутся. */
+.tiles[data-pinned]:not([data-pinned='']) .tile:not(.tile--pinned) .tile-tools { display: none; }
+
 /* ── крупно и обратно ───────────────────────────────────── */
 
 .tile-pin {

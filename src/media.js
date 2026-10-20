@@ -21,6 +21,16 @@ export const withDevice = (constraint, deviceId) =>
 
 export const createMedia = ({
   getUserMedia = constraints => navigator.mediaDevices.getUserMedia(constraints),
+  enumerateDevices = () => navigator.mediaDevices?.enumerateDevices?.() ?? Promise.resolve([]),
+  // Chrome показывает приближение камеры, только если о нём попросили при
+  // захвате, — и тогда спрашивает разрешение «управлять камерой». Просим
+  // только на телефонах и планшетах: на компьютере приближать почти нечем,
+  // а лишний вопрос пугает.
+  askZoom = () =>
+    Boolean(
+      globalThis.matchMedia?.('(pointer: coarse)').matches &&
+        globalThis.navigator?.mediaDevices?.getSupportedConstraints?.().zoom,
+    ),
   getDisplayMedia = globalThis.navigator?.mediaDevices?.getDisplayMedia
     ? constraints => navigator.mediaDevices.getDisplayMedia(constraints)
     : undefined,
@@ -50,7 +60,7 @@ export const createMedia = ({
     const captured = await getUserMedia(
       kind === 'audio'
         ? {audio: withDevice(constraint, preferred.audio), video: false}
-        : {audio: false, video: withDevice(constraint, preferred.video)},
+        : {audio: false, video: withZoom(withDevice(constraint, preferred.video))},
     );
     const [next] = kind === 'audio' ? captured.getAudioTracks() : captured.getVideoTracks();
     // Порядок важен: сначала забрать новую дорожку, потом гасить старую.
@@ -58,10 +68,92 @@ export const createMedia = ({
     old.stop();
     stream.removeTrack(old);
     stream.addTrack(next);
+    if (kind === 'video') zoomWanted = null;
+    return {old, next};
+  };
+
+  const withZoom = video => (video && askZoom() ? {...video, zoom: true} : video);
+
+  // Приближение, которое выбрал человек. Помним сами: смена ступени качества
+  // перенастраивает камеру заново, и без напоминания приближение молча
+  // сбрасывалось бы к единице.
+  let zoomWanted = null;
+  const cameraTrack = () => stream?.getVideoTracks()[0] ?? null;
+
+  // Другая камера: на телефоне — передняя или задняя, на компьютере с двумя
+  // камерами — следующая по списку. Как и выбор в настройках, отдаёт пару
+  // дорожек для замены у собеседников; камера выключена — null.
+  const flipCamera = async step => {
+    const old = cameraTrack();
+    const constraint = constraintsFor(step).video;
+    if (!old || !constraint) return null;
+
+    const facing = old.getSettings?.().facingMode;
+    let want;
+    if (facing === 'user' || facing === 'environment') {
+      want = {...constraint, facingMode: {exact: facing === 'user' ? 'environment' : 'user'}};
+    } else {
+      const ids = (await enumerateDevices())
+        .filter(d => d.kind === 'videoinput' && d.deviceId)
+        .map(d => d.deviceId);
+      const here = ids.indexOf(old.getSettings?.().deviceId);
+      const next = ids[(here + 1) % ids.length];
+      if (!next || ids.length < 2) return null;
+      want = withDevice(constraint, next);
+    }
+
+    let captured;
+    try {
+      captured = await getUserMedia({audio: false, video: withZoom(want)});
+    } catch (error) {
+      // Многие телефоны не открывают вторую камеру, пока занята первая.
+      // Тогда сначала гасим первую — на мгновение картинки не будет, зато
+      // переключение сработает.
+      if (error?.name !== 'NotReadableError') throw error;
+      old.stop();
+      try {
+        captured = await getUserMedia({audio: false, video: withZoom(want)});
+      } catch {
+        // Не открылась и так — возвращаем прежнюю, чтобы человек не остался
+        // без картинки из-за попытки её сменить.
+        const back = old.getSettings?.().deviceId;
+        captured = await getUserMedia({audio: false, video: withZoom(withDevice(constraint, back))});
+      }
+    }
+    const [next] = captured.getVideoTracks();
+    old.stop();
+    stream.removeTrack(old);
+    stream.addTrack(next);
+    // Выбор запоминаем, как выбор в настройках: выключил камеру и включил
+    // снова — та же камера, а не снова передняя.
+    preferred.video = next.getSettings?.().deviceId || preferred.video;
+    zoomWanted = null;
     return {old, next};
   };
 
   return {
+    flipCamera,
+    facing: () => cameraTrack()?.getSettings?.().facingMode ?? null,
+    cameraCount: async () =>
+      (await enumerateDevices()).filter(d => d.kind === 'videoinput').length,
+
+    // Приближение — только там, где камера умеет его сама (обычно задняя
+    // камера телефона). Цифровое, растягиванием кадра, не делаем: оно
+    // лишь размывает картинку, и собеседник видит то же самое, только хуже.
+    zoom: () => {
+      const track = cameraTrack();
+      const range = track?.getCapabilities?.().zoom;
+      if (!range || !(range.max > range.min)) return null;
+      return {min: range.min, max: range.max, value: track.getSettings?.().zoom ?? range.min};
+    },
+    setZoom: async value => {
+      const track = cameraTrack();
+      const range = track?.getCapabilities?.().zoom;
+      if (!range) return;
+      zoomWanted = Math.min(range.max, Math.max(range.min, Number(value) || range.min));
+      await track.applyConstraints({advanced: [{zoom: zoomWanted}]});
+    },
+
     // Выбор устройства из настроек. Возвращает пару дорожек для замены на
     // соединениях либо null, если менять пока нечего.
     // Экран умеют не все: на телефонах getDisplayMedia нет вовсе, и кнопку
@@ -131,6 +223,7 @@ export const createMedia = ({
       await video.applyConstraints({
         width: {ideal: step.width},
         height: {ideal: step.height},
+        ...(zoomWanted !== null ? {advanced: [{zoom: zoomWanted}]} : {}),
       });
     },
 
@@ -168,7 +261,10 @@ export const createMedia = ({
       const video = constraintsFor(step).video;
       if (!video) return null;
       if (stream?.getVideoTracks().length) return null; // уже захвачена
-      const captured = await getUserMedia({audio: false, video: withDevice(video, preferred.video)});
+      const captured = await getUserMedia({
+        audio: false,
+        video: withZoom(withDevice(video, preferred.video)),
+      });
       const [track] = captured.getVideoTracks();
       if (stream) stream.addTrack(track);
       else stream = captured;
@@ -188,6 +284,7 @@ export const createMedia = ({
       return tracks;
     },
     releaseCamera: () => {
+      zoomWanted = null;
       const tracks = stream?.getVideoTracks() ?? [];
       tracks.forEach(t => {
         t.stop();

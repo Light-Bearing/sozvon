@@ -86,6 +86,11 @@ export const createRoom = async ({
   const SPEAKING_WINDOW_MS = 700;
   let speaking = [];
 
+  // Сколько камер у устройства: от этого зависит, показывать ли «другую
+  // камеру». Пересчитывается при каждом включении камеры.
+  let cameras = 0;
+  let flipping = false;
+
   const state = () => ({
     // При обмене вручную вместо ссылки на комнату — то, что везёт человек:
     // у хозяина ссылка с его описанием, у гостя код ответа. Пока адреса
@@ -122,6 +127,10 @@ export const createRoom = async ({
     })),
     // Свой экран — чтобы человек видел, что именно показывает.
     selfScreen: media.screen?.() ?? null,
+    // Своя камера: какая сторона, можно ли сменить, есть ли приближение.
+    canFlip: cameras > 1 && Boolean(media.current()?.getVideoTracks?.().length),
+    facing: media.facing?.() ?? null,
+    zoom: media.zoom?.() ?? null,
   });
 
   const announce = () => onChange(state());
@@ -598,6 +607,17 @@ export const createRoom = async ({
         return;
       }
       if (track) connection.addTrack(track, media.current());
+      // Сколько камер — узнаём, когда камера уже дана: до разрешения браузер
+      // перечисляет устройства не полностью.
+      if (track && media.cameraCount) {
+        void media.cameraCount().then(
+          n => {
+            cameras = n;
+            announce();
+          },
+          () => {},
+        );
+      }
     } catch {
       cameraWanted = false;
     } finally {
@@ -801,6 +821,31 @@ export const createRoom = async ({
         await startLevelMeter(media.current());
       }
       applyDesiredMedia();
+      announce();
+    },
+
+    // Другая камера — передняя или задняя. Собеседникам подменяем дорожку,
+    // разговор не прерывается.
+    flipCamera: async () => {
+      if (flipping) return;
+      flipping = true;
+      try {
+        const swap = await media.flipCamera?.(step);
+        if (swap) connection.replaceTrack(swap.old, swap.next);
+      } catch {
+        // Не открылась — остаёмся на прежней; если её успели погасить,
+        // кнопка камеры покажет это честно при следующей перерисовке.
+      } finally {
+        flipping = false;
+        applyDesiredMedia();
+        announce();
+      }
+    },
+
+    setZoom: async value => {
+      try {
+        await media.setZoom?.(value);
+      } catch {}
       announce();
     },
 

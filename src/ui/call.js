@@ -104,9 +104,45 @@ const makeTile = (id, isSelf) => {
   memeCaption.className = 'tile-meme-caption';
   meme.append(memeEmoji, memeCaption);
 
-  box.append(video, ...(sound ? [sound] : []), name, gear, pin, reaction, meme);
+  // Своя камера: другая сторона и приближение. Только на своей плитке —
+  // чужой камерой управлять нельзя.
+  const tools = [];
+  if (isSelf) {
+    const bar = document.createElement('span');
+    bar.className = 'tile-tools';
+    const flip = document.createElement('button');
+    flip.type = 'button';
+    flip.className = 'tile-flip';
+    flip.setAttribute('aria-label', 'Другая камера');
+    flip.title = 'Другая камера';
+    flip.innerHTML = '<svg class="i" aria-hidden="true"><use href="#i-flip" /></svg>';
+    flip.hidden = true;
+    const zoom = document.createElement('button');
+    zoom.type = 'button';
+    zoom.className = 'tile-zoom';
+    zoom.hidden = true;
+    bar.append(zoom, flip);
+    tools.push(bar);
+  }
+
+  box.append(video, ...(sound ? [sound] : []), name, gear, pin, reaction, meme, ...tools);
   return box;
 };
+
+// Ступеньки приближения — как в камере телефона: 1×, 2×, 3×, 5×, 10×, но
+// не дальше, чем умеет камера. Кнопка шагает по ним по кругу.
+export const zoomSteps = ({min, max}) => {
+  const steps = [min, ...[2, 3, 5, 10].filter(v => v > min + 0.05 && v <= max + 0.001)];
+  if (steps.length === 1) steps.push(max);
+  return steps;
+};
+
+export const nextZoom = range => {
+  const steps = zoomSteps(range);
+  return steps.find(v => v > range.value + 0.05) ?? steps[0];
+};
+
+const zoomLabel = value => `${Number(value.toFixed(1)).toLocaleString('ru-RU')}×`;
 
 // Размер сетки читаем наблюдателем, а не на каждой перерисовке: перерисовок
 // по нескольку в секунду, а каждое чтение размеров заставляет браузер
@@ -449,6 +485,24 @@ const bindCopy = (container, link) => {
   }
 };
 
+const bindCameraTools = (box, state, actions) => {
+  const flip = box.querySelector('.tile-flip');
+  const zoom = box.querySelector('.tile-zoom');
+  if (!flip || !zoom) return;
+  const live = Boolean(state.cam);
+  flip.hidden = !live || !state.canFlip;
+  flip.onclick = () => void actions.flipCamera?.();
+  const range = live ? state.zoom : null;
+  zoom.hidden = !range;
+  if (range) {
+    const now = zoomLabel(range.value);
+    const next = nextZoom(range);
+    if (zoom.textContent !== now) zoom.textContent = now;
+    zoom.setAttribute('aria-label', `Приближение ${now}, нажмите для ${zoomLabel(next)}`);
+    zoom.onclick = () => void actions.setZoom?.(next);
+  }
+};
+
 export const renderCall = (container, state, actions) => {
   const alone = state.peers.length === 0;
   container.dataset.busy = alone ? 'no' : 'yes';
@@ -462,7 +516,7 @@ export const renderCall = (container, state, actions) => {
   const backdropSource = hasPicture(state.self) ? state.self : null;
   if (backdrop.srcObject !== backdropSource) backdrop.srcObject = backdropSource;
   // Фон — тоже своё лицо, и расходиться с плиткой он не должен.
-  backdrop.classList.toggle('backdrop--mirror', Boolean(state.mirror));
+  backdrop.classList.toggle('backdrop--mirror', Boolean(state.mirror) && state.facing !== 'environment');
 
   // На своей плитке — своё имя, а не «Вы»: это ровно то, что видят
   // остальные, и другого места проверить его нет.
@@ -519,7 +573,9 @@ export const renderCall = (container, state, actions) => {
       isSelf,
       speaker: state.speaker,
       speaking: state.speaking?.includes(id),
-      mirror: state.mirror,
+      // Заднюю камеру не зеркалим даже по просьбе: она смотрит на мир, а не
+      // на человека, и надписи в кадре читались бы задом наперёд.
+      mirror: state.mirror && state.facing !== 'environment',
       reaction: state.reactions?.get(id),
       mic,
       cam,
@@ -546,6 +602,8 @@ export const renderCall = (container, state, actions) => {
     pin.setAttribute('aria-pressed', isPinned ? 'true' : 'false');
     pin.setAttribute('aria-label', isPinned ? 'Вернуть как было' : 'Показать крупно');
     pin.onclick = () => actions.togglePin?.(id);
+
+    if (isSelf) bindCameraTools(box, state, actions);
   }
   // Осталось в present — те, кого уже нет.
   for (const box of present.values()) {
