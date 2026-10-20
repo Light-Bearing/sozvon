@@ -16,7 +16,11 @@
 // перезапуск связи — договаривается по каналу данных внутри самого
 // соединения. Почтальон нужен только один раз.
 
-import {gatherComplete, manualLink, pack, unpack} from './manual.js';
+import {gatherComplete, manualLink, unpack} from './manual.js';
+import {isSlim, slimPack, slimUnpack} from './slim-sdp.js';
+
+// Код — короткий нового вида или сжатое полное описание, как в 0.23.
+export const readCode = async code => (isSlim(code) ? slimUnpack(code) : unpack(code));
 
 export const PEER = 'собеседник';
 
@@ -37,26 +41,6 @@ export const codeFrom = text => {
   return tokens ? tokens.at(-1) : null;
 };
 
-// Кодеки — только самые ходовые. Каждый лишний — строчки в описании, а
-// описание едет в ссылке, и длинную ссылку мессенджер может и обрезать.
-// VP8 и H.264 базового профиля понимают все браузеры, Opus — тоже.
-const KEEP = codec =>
-  /^audio\/opus$/i.test(codec.mimeType) ||
-  /^video\/(VP8|rtx)$/i.test(codec.mimeType) ||
-  (/^video\/H264$/i.test(codec.mimeType) &&
-    /profile-level-id=42e01f/i.test(codec.sdpFmtpLine ?? '') &&
-    /packetization-mode=1/.test(codec.sdpFmtpLine ?? ''));
-
-const shortList = (transceiver, kind) => {
-  try {
-    const codecs = globalThis.RTCRtpReceiver?.getCapabilities?.(kind)?.codecs ?? [];
-    const kept = codecs.filter(KEEP);
-    if (kept.some(c => !/rtx/i.test(c.mimeType))) transceiver.setCodecPreferences?.(kept);
-  } catch {
-    // Не дали выбрать — значит, пойдёт полный список; длиннее, но работает.
-  }
-};
-
 export const connectByHand = ({
   role,
   offer = null,
@@ -66,8 +50,8 @@ export const connectByHand = ({
   Rtc = globalThis.RTCPeerConnection,
   gatherMs = GATHER_MS,
 }) => async ({handlers = {}, onQuiet = () => {}} = {}) => {
-  // Всё по одной паре адресов: адреса в описании перечисляются тогда один
-  // раз, а не у каждой дорожки, и ссылка выходит заметно короче.
+  // Всё по одной паре адресов: звук, картинка и канал данных идут одним
+  // путём, и договариваться о новых адресах при включении камеры не нужно.
   const pc = new Rtc({iceServers: [...STUN, ...servers], bundlePolicy: 'max-bundle'});
   // Канал заранее условленный с обеих сторон, без объявления: так он
   // существует с первой секунды и у гостя, и у хозяина.
@@ -189,6 +173,17 @@ export const connectByHand = ({
     onQuiet(false);
     for (const [stream, r] of myRoles) send('@role', {stream, role: r});
     handlers.onPeerJoin?.(PEER);
+    // Места под дорожки — звук, камера и экран — хозяин заводит, как только
+    // соединились. Дорожку гостя можно передать только там, где хозяин
+    // предложил для неё место, а предложения делает только он. Пока места
+    // пустые, они лишь принимают; дорожки хозяина, если он включил камеру
+    // ещё до соединения, уже заняли свои.
+    if (role === 'host') {
+      const have = kind => pc.getTransceivers().filter(t => t.receiver.track?.kind === kind).length;
+      for (const [kind, want] of [['audio', 1], ['video', 2]]) {
+        for (let n = have(kind); n < want; n++) pc.addTransceiver(kind, {direction: 'recvonly'});
+      }
+    }
     if (postponed) {
       postponed = false;
       void negotiate();
@@ -216,23 +211,18 @@ export const connectByHand = ({
   // Первое рукопожатие — в фоне: подключение возвращаем сразу, а код
   // появится через пару секунд, когда соберутся адреса.
   const ready = (async () => {
+    // Первое рукопожатие — только канал данных: тогда в код идут лишь
+    // имя, пароль, отпечаток и адреса (src/signal/slim-sdp.js), и он
+    // выходит в двести знаков, а не в две тысячи.
     if (role === 'host') {
-      // Места под дорожки — заранее: звук, камера и экран. Дорожку гостя
-      // можно передать только там, где хозяин предложил для неё место, а
-      // предложения теперь делает только он. Пока места пустые, они только
-      // принимают; своя дорожка хозяина займёт своё место сама.
-      for (const kind of ['audio', 'video', 'video']) {
-        const transceiver = pc.addTransceiver(kind, {direction: 'recvonly'});
-        shortList(transceiver, kind);
-      }
       await pc.setLocalDescription();
       await gathered();
-      invite = manualLink(await pack(pc.localDescription), base) + (pass ? `.${pass}` : '');
+      invite = manualLink(slimPack(pc.localDescription), base) + (pass ? `.${pass}` : '');
     } else {
       await pc.setRemoteDescription(offer);
       await pc.setLocalDescription();
       await gathered();
-      invite = await pack(pc.localDescription);
+      invite = slimPack(pc.localDescription);
     }
     handlers.onChanged?.();
   })();
@@ -256,7 +246,12 @@ export const connectByHand = ({
     accept: async text => {
       const code = codeFrom(text);
       if (!code) throw new Error('Здесь нет кода — вставьте ответ целиком');
-      const answer = await unpack(code);
+      let answer;
+      try {
+        answer = await readCode(code);
+      } catch {
+        throw new Error('Код не читается — похоже, скопирован не целиком');
+      }
       if (answer.type !== 'answer') throw new Error('Это не ответ, а приглашение — нужен код от собеседника');
       await ready;
       await pc.setRemoteDescription(answer);

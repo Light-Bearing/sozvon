@@ -1,6 +1,6 @@
 import {generateSecret, linkToSecret, passFromLink} from './room-secret.js';
-import {codeFromLink, unpack} from './signal/manual.js';
-import {connectByHand} from './signal/by-hand.js';
+import {codeFromLink} from './signal/manual.js';
+import {connectByHand, readCode} from './signal/by-hand.js';
 import {createRoom} from './room.js';
 import {createAwake} from './awake.js';
 import {familiesFor, parseFamilyNames} from './signal/public-channels.js';
@@ -228,7 +228,7 @@ const enter = async (secret, byHand = null) => {
       let offer = null;
       if (byHand.role === 'guest') {
         try {
-          offer = await unpack(byHand.offer);
+          offer = await readCode(byHand.offer);
         } catch {
           throw Object.assign(new Error('Код в ссылке испорчен'), {name: 'ManualCodeError'});
         }
