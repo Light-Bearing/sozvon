@@ -3,6 +3,7 @@ import {
   TICKET_SECONDS,
   mintTicket,
   packPass,
+  packPassCompact,
   passFor,
   relayUrls,
   serversFromPass,
@@ -153,9 +154,15 @@ describe('пропуск в приглашении', () => {
     expect(unpackPass(btoa('{"a":"x"}'))).toBe(null);
   });
 
-  it('пропуск к ретранслятору по адресу — короткий: около сорока знаков, а не сто с лишним', async () => {
+  it('в ссылку пока идёт прежний вид — его читают и старые версии', async () => {
     const пропуск = await passFor({address: '195.58.52.143:3478', secret: 'ключ', now: СЕЙЧАС});
-    const упаковка = packPass(пропуск);
+
+    expect(packPass(пропуск).startsWith('ey')).toBe(true);
+  });
+
+  it('короткий пропуск по адресу — около сорока знаков, и читается', async () => {
+    const пропуск = await passFor({address: '195.58.52.143:3478', secret: 'ключ', now: СЕЙЧАС});
+    const упаковка = packPassCompact(пропуск);
 
     expect(упаковка.length).toBeLessThanOrEqual(44);
     expect(unpackPass(упаковка, {now: СЕЙЧАС})).toEqual(пропуск);
@@ -164,7 +171,7 @@ describe('пропуск в приглашении', () => {
   it('адрес без порта и с приставкой turn: — тоже коротко и без потерь', async () => {
     for (const address of ['195.58.52.143', 'turn:195.58.52.143:3478']) {
       const пропуск = await passFor({address, secret: 'ключ', now: СЕЙЧАС});
-      const упаковка = packPass(пропуск);
+      const упаковка = packPassCompact(пропуск);
       expect(упаковка.length).toBeLessThanOrEqual(44);
       // Адрес может прийти без приставки — важно, что ретранслятор тот же.
       expect(serversFromPass(unpackPass(упаковка, {now: СЕЙЧАС}))).toEqual(serversFromPass(пропуск));
@@ -188,13 +195,13 @@ describe('пропуск в приглашении', () => {
   it('короткий просроченный — тоже отбрасывается', async () => {
     const пропуск = await passFor({address: '195.0.2.1', secret: 'ключ', now: СЕЙЧАС});
 
-    expect(unpackPass(packPass(пропуск), {now: СЕЙЧАС + (TICKET_SECONDS + 1) * 1000})).toBe(null);
+    expect(unpackPass(packPassCompact(пропуск), {now: СЕЙЧАС + (TICKET_SECONDS + 1) * 1000})).toBe(null);
   });
 
   it('обрезанный короткий — без ретранслятора, а не мусор', async () => {
     const пропуск = await passFor({address: '195.0.2.1', secret: 'ключ', now: СЕЙЧАС});
 
-    expect(unpackPass(packPass(пропуск).slice(0, 20), {now: СЕЙЧАС})).toBe(null);
+    expect(unpackPass(packPassCompact(пропуск).slice(0, 20), {now: СЕЙЧАС})).toBe(null);
   });
 
   it('без ретранслятора пропуска нет', async () => {
