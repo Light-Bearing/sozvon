@@ -765,6 +765,19 @@ describe('беда с прямым путём доходит до состоян
     expect(room.state().troubles).toEqual([]);
   });
 
+  it('перезагрузил страницу: прежний номер пропал без прощания — беды о нём нет', async () => {
+    // Прощание с перезагружаемой вкладки не успевает уйти: соединение
+    // закрывается раньше. О пропаже уже сказала строка «связь прервалась».
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('прежний');
+    connection.handlers.onPeerLeave('прежний');
+    connection.handlers.onPeerJoin('новый');
+
+    connection.handlers.onTrouble([{peerId: 'прежний', kind: 'no-path'}]);
+
+    expect(room.state().troubles).toEqual([]);
+  });
+
   it('а о том, кого в разговоре нет, — показывается', async () => {
     const {room, connection} = await openRoom();
     connection.handlers.onPeerJoin('коллега');
