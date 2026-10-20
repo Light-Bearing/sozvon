@@ -592,6 +592,21 @@ describe('вход без захвата и включение по требов
     await room.leave();
   });
 
+  it('камеру не дали — кнопка возвращается, а человек узнаёт почему', async () => {
+    const media = fakeMedia();
+    media.captureCamera.mockRejectedValue(
+      Object.assign(new Error('Permission denied by system'), {name: 'NotAllowedError'}),
+    );
+    const {room} = await openRoom({media, connection: fakeConnection()});
+
+    await room.setCamera(true);
+
+    expect(room.state().cam).toBe(false);
+    expect(room.state().notice?.text).toMatch(/не даёт браузеру камеру/);
+
+    await room.leave();
+  });
+
   it('выключение снимает дорожку с соединений — release() освобождает устройство', async () => {
     const media = fakeMedia();
     const track = {kind: 'video'};

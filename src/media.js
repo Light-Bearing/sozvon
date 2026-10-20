@@ -72,6 +72,29 @@ export const createMedia = ({
     return {old, next};
   };
 
+  // Захват выбранного устройства. Выбранного может уже не быть: внешнюю
+  // камеру отключили, iPhone-камера ушла вместе с телефоном, а Safari и
+  // вовсе меняет номера устройств между сессиями. Тогда точное требование
+  // проваливается, и кнопка молча отскакивала назад. Поэтому без выбранного
+  // — берём то, что браузер даёт по умолчанию, и забываем выбор.
+  const captureChosen = async (kind, constraint) => {
+    const id = preferred[kind];
+    const ask = deviceId => {
+      const wanted = withDevice(constraint, deviceId);
+      return getUserMedia(
+        kind === 'audio' ? {audio: wanted, video: false} : {audio: false, video: withZoom(wanted)},
+      );
+    };
+    try {
+      return await ask(id);
+    } catch (error) {
+      const gone = error?.name === 'OverconstrainedError' || error?.name === 'NotFoundError';
+      if (!id || !gone) throw error;
+      preferred[kind] = null;
+      return ask(null);
+    }
+  };
+
   const withZoom = video => (video && askZoom() ? {...video, zoom: true} : video);
 
   // Приближение, которое выбрал человек. Помним сами: смена ступени качества
@@ -244,10 +267,7 @@ export const createMedia = ({
     // дорожку и моргал бы устройством, которое и так работает.
     captureMicrophone: async step => {
       if (stream?.getAudioTracks().length) return null; // уже захвачен
-      const captured = await getUserMedia({
-        audio: withDevice(constraintsFor(step).audio, preferred.audio),
-        video: false,
-      });
+      const captured = await captureChosen('audio', constraintsFor(step).audio);
       const [track] = captured.getAudioTracks();
       if (stream) stream.addTrack(track);
       else stream = captured;
@@ -261,10 +281,7 @@ export const createMedia = ({
       const video = constraintsFor(step).video;
       if (!video) return null;
       if (stream?.getVideoTracks().length) return null; // уже захвачена
-      const captured = await getUserMedia({
-        audio: false,
-        video: withZoom(withDevice(video, preferred.video)),
-      });
+      const captured = await captureChosen('video', video);
       const [track] = captured.getVideoTracks();
       if (stream) stream.addTrack(track);
       else stream = captured;

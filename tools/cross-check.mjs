@@ -139,6 +139,9 @@ const дождаться = async (условие, секунд) => {
 };
 
 const нажать = sel => `(() => { const b = document.querySelector(${JSON.stringify(sel)}); b?.click(); return Boolean(b); })()`;
+// Экран показан и программа на нём ожила: у поля имени уже есть подсказка.
+const готовЭкран = экран =>
+  `(() => { const e = document.querySelector('#screen-${экран}'); return Boolean(e && !e.hidden && e.querySelector('[data-name], #name-input')?.placeholder); })()`;
 const текстСсылки = `document.querySelector('#link')?.textContent ?? ''`;
 const плиток = `document.querySelectorAll('#tiles .tile').length`;
 const видитСобеседника = `(async () => {
@@ -152,7 +155,9 @@ const видитСобеседника = `(async () => {
 
 const разговор = async (имяХозяина, хозяин, имяГостя, открытьГостя) => {
   console.log(`\n${имяХозяина} зовёт, ${имяГостя} отвечает`);
-  await ждать(2500);
+  // Ждём не время, а готовность: с живого сайта страница грузится дольше,
+  // чем с дев-сервера, и нажатие до загрузки уходило в пустоту.
+  await дождаться(async () => (await хозяин(готовЭкран('start'))) === true, 20);
   await хозяин(нажать('#start'));
   await ждать(1500);
   await хозяин(нажать('#by-hand'));
@@ -161,7 +166,7 @@ const разговор = async (имяХозяина, хозяин, имяГос
   отметить(/#m\./.test(ссылка), `${имяХозяина}: ссылка для обмена`, `${ссылка.length} знаков`);
 
   const гость = await открытьГостя(ссылка);
-  await ждать(2500);
+  await дождаться(async () => (await гость(готовЭкран('join'))) === true, 20);
   await гость(нажать('#join'));
   await дождаться(async () => /^[A-Za-z0-9_-]{40,}$/.test((await гость(текстСсылки)) ?? ''), 15);
   const ответ = await гость(текстСсылки);
@@ -180,8 +185,15 @@ const разговор = async (имяХозяина, хозяин, имяГос
   }
   await ждать(7000);
   for (const [имя, t] of [[имяХозяина, хозяин], [имяГостя, гость]]) {
-    const v = JSON.parse((await t(видитСобеседника)) ?? '{}');
-    отметить(v.картинка === true, `${имя} видит картинку собеседника`);
+    // Картинку даём дойти: на живом сайте договор о дорожках идёт через
+    // настоящую сеть и иногда занимает дольше нескольких секунд.
+    let v = {};
+    for (let i = 0; i < 4 && !(v.картинка && v.звук); i++) {
+      if (i) await ждать(2500);
+      v = JSON.parse((await t(видитСобеседника)) ?? '{}');
+    }
+    const подробно = v.картинка && v.звук ? '' : (await t(`JSON.stringify({плиток: document.querySelectorAll('#tiles .tile').length, дорожки: document.querySelector('#tiles .tile:not([data-peer="self"]) video')?.srcObject?.getTracks().map(x => x.kind + ':' + x.readyState + (x.muted ? ':глухая' : '')) ?? null, тёмная: document.querySelector('#tiles .tile:not([data-peer="self"])')?.classList.contains('tile--dark')})`)) ?? 'скрипт не выполнился';
+    отметить(v.картинка === true, `${имя} видит картинку собеседника`, v.картинка ? '' : подробно);
     отметить(v.звук === true, `${имя} получает звук собеседника`);
   }
 };

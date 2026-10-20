@@ -11,6 +11,7 @@ import {makeName, trimName} from './names.js';
 import {createFlowTracker} from './flow.js';
 import {createChatLog, isReaction, trimText} from './chat.js';
 import {reviveOnDrop} from './revive.js';
+import {explainMediaFailure} from './media-trouble.js';
 import {cleanFace, cleanMeme} from './vision-logic.js';
 
 const STATS_EVERY_MS = 2_000;
@@ -184,13 +185,19 @@ export const createRoom = async ({
   const NOTICE_MS = 5000;
   let notice = null;
   let noticeTimer = null;
-  const tell = text => {
+  const tell = (text, ms = NOTICE_MS) => {
     clearTimeout(noticeTimer);
     notice = {text, at: Date.now()};
     noticeTimer = setTimeout(() => {
       notice = null;
       announce();
-    }, NOTICE_MS);
+    }, ms);
+  };
+  // Отказ камеры, микрофона или экрана: объяснение длиннее, и человеку надо
+  // успеть его прочесть и сходить по подсказке в настройки.
+  const tellFailure = (kind, error) => {
+    const text = explainMediaFailure(kind, error);
+    if (text) tell(text, 15_000);
   };
 
   // Что у собеседника с микрофоном и камерой. Выводить это из дорожек
@@ -581,10 +588,12 @@ export const createRoom = async ({
       }
       if (track) connection.addTrack(track, media.current());
       await startLevelMeter(media.current());
-    } catch {
+    } catch (error) {
       // Браузер не пустил (или устройство недоступно) — звонок
-      // продолжается, кнопка честно возвращается в «выключено».
+      // продолжается, кнопка честно возвращается в «выключено», а человек
+      // узнаёт почему.
       microphoneWanted = false;
+      tellFailure('microphone', error);
     } finally {
       microphoneCapturing = false;
       applyDesiredMedia();
@@ -618,8 +627,9 @@ export const createRoom = async ({
           () => {},
         );
       }
-    } catch {
+    } catch (error) {
       cameraWanted = false;
+      tellFailure('camera', error);
     } finally {
       cameraCapturing = false;
       applyDesiredMedia();
@@ -726,9 +736,11 @@ export const createRoom = async ({
         }
         if (change?.removed) connection.removeTrack(change.removed);
         void screensChannel?.send(on);
-      } catch {
-        // Человек передумал в окне выбора окна — это не поломка.
+      } catch (error) {
+        // Человек передумал в окне выбора окна — это не поломка, и
+        // объяснение тогда пустое. А вот запрет системы — поломка.
         screenWanted = false;
+        if (on) tellFailure('screen', error);
       } finally {
         screenSwitching = false;
         applyDesiredMedia();

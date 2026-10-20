@@ -809,8 +809,14 @@ select.field-input {
   align-self: start;
   margin: 0;
   margin-block-start: var(--pad);
+  /* Объяснение, почему не включилась камера, бывает в две-три строки:
+     ширину держим, а скругление — такое, что одна строка остаётся
+     пилюлей, а несколько не становятся овалом. */
+  max-width: min(34rem, 100vw - var(--pad) * 2);
   padding: 0.45rem 0.95rem;
-  border-radius: 999px;
+  border-radius: 1.1rem;
+  text-align: center;
+  line-height: 1.35;
   background: rgba(10, 9, 12, 0.72);
   backdrop-filter: blur(8px);
   color: var(--text);

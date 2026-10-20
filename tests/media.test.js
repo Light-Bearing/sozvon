@@ -302,3 +302,30 @@ describe('захват и освобождение по требованию', (
     expect(media.releaseCamera()).toEqual([]);
   });
 });
+
+describe('выбранного устройства больше нет', () => {
+  it('камера: берём ту, что по умолчанию, а не отказываемся', async () => {
+    const track = {kind: 'video', enabled: true, stop: vi.fn(), getSettings: () => ({deviceId: 'встроенная'})};
+    const getUserMedia = vi.fn(async ({video}) => {
+      if (video?.deviceId?.exact === 'ушедшая') throw Object.assign(new Error('нет'), {name: 'OverconstrainedError'});
+      return {getVideoTracks: () => [track], getAudioTracks: () => [], getTracks: () => [track]};
+    });
+    const media = createMedia({getUserMedia, enumerateDevices: async () => []});
+    // Выбор из настроек, сделанный когда камера была.
+    await media.useCamera('ушедшая', stepForPeers(2));
+
+    expect(await media.captureCamera(stepForPeers(2))).toBe(track);
+    expect(media.chosen().camera).toBe(null);
+  });
+
+  it('запрет — не повод брать другое устройство: отказ доходит наверх', async () => {
+    const getUserMedia = vi.fn(async () => {
+      throw Object.assign(new Error('Permission denied by system'), {name: 'NotAllowedError'});
+    });
+    const media = createMedia({getUserMedia, enumerateDevices: async () => []});
+    await media.useCamera('любая', stepForPeers(2));
+
+    await expect(media.captureCamera(stepForPeers(2))).rejects.toThrow('Permission denied by system');
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+  });
+});
