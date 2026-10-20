@@ -66,9 +66,14 @@ let pinned = null;
 
 // Наводка на лицо и мемы по жестам. Выключены, пока человек сам не включит:
 // распознавание стоит процессора и мегабайт при первом включении.
+//
+// В сборке одним файлом распознавания нет вовсе: модуль весит двенадцать
+// мегабайт и в «просто передать файл» не помещается. Мемы и наводку
+// собеседников такая сборка при этом показывает — это просто значки и сдвиг.
+const VISION = import.meta.env.VITE_VISION !== 'нет';
 const vision = {
-  face: recall('лицо-в-кадре') === 'да',
-  gestures: recall('мемы') === 'да',
+  face: VISION && recall('лицо-в-кадре') === 'да',
+  gestures: VISION && recall('мемы') === 'да',
 };
 
 const seer = createVision({
@@ -237,6 +242,7 @@ const settings = createSettings(app, {
   currentDevices: () => picked,
   currentMirror: () => mirror,
   currentVision: () => vision,
+  visionAvailable: VISION,
   setVision: part => {
     Object.assign(vision, part);
     remember('лицо-в-кадре', vision.face ? 'да' : null);

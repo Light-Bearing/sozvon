@@ -358,3 +358,28 @@ describe('настройки с клавиатуры', () => {
     expect(document.activeElement).toBe(el.querySelector('#settings-close'));
   });
 });
+
+describe('сборка без распознавания', () => {
+  it('переключатели мемов и лица спрятаны, а не обещают то, чего нет', async () => {
+    const el = root();
+    const panel = createSettings(el, {
+      currentName: () => '',
+      nameHint: () => 'Сонная Выдра',
+      currentDevices: () => ({microphone: null, camera: null, speaker: null}),
+      visionAvailable: false,
+    });
+
+    await panel.open();
+
+    expect(el.querySelector('#face-follow').closest('.switch').hidden).toBe(true);
+    expect(el.querySelector('#memes').closest('.switch').hidden).toBe(true);
+    expect(el.querySelector('#mirror').closest('.switch').hidden).toBe(false);
+  });
+
+  it('в обычной сборке на месте', async () => {
+    const el = root();
+    createSettings(el, {currentName: () => '', nameHint: () => '', currentDevices: () => ({})});
+
+    expect(el.querySelector('#memes').closest('.switch').hidden).toBe(false);
+  });
+});

@@ -81,6 +81,14 @@ export const createSettings = (root, actions) => {
   const mirror = root.querySelector('#mirror');
   const faceFollow = root.querySelector('#face-follow');
   const memes = root.querySelector('#memes');
+  // В сборке одним файлом модуля распознавания нет: переключатель, который
+  // заведомо скажет «не работает», хуже, чем его отсутствие.
+  if (actions.visionAvailable === false) {
+    for (const box of [faceFollow, memes]) {
+      const row = box?.closest('.switch');
+      if (row) row.hidden = true;
+    }
+  }
   const relayAddress = root.querySelector('#relay-address');
   const relaySecret = root.querySelector('#relay-secret');
 
