@@ -99,7 +99,13 @@ export const createRoom = async ({
     link: connection?.manual ? (connection.invite() ?? '') : secretToLink(secret, undefined, pass),
     manual: connection?.manual ?? null,
     quiet,
-    troubles,
+    // Беда о том, кто сейчас в разговоре, — не беда: путь к нему есть, раз
+    // он здесь. Так бывает, когда одна из параллельных попыток соединиться
+    // провалилась, а другая прошла. И о попрощавшемся — тоже нет: он
+    // перезагрузил страницу и вернулся под новым именем, а неудачи
+    // доходят от прежнего, которого уже нет. Иначе посреди живого разговора
+    // всплывало «прямого пути между вами нет».
+    troubles: troubles.filter(({peerId}) => !peers.has(peerId) && !gone.has(peerId)),
     flow,
     step,
     self: media.current(),

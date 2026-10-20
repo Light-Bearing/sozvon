@@ -742,6 +742,38 @@ describe('беда с прямым путём доходит до состоян
     ]);
   });
 
+  it('беда о том, кто сейчас в разговоре, не показывается: путь к нему есть', async () => {
+    // Живьём так и было: разговор с коллегой шёл, а поверх всплывало
+    // «прямого пути между вами нет» — провалилась одна из параллельных
+    // попыток соединиться, а другая прошла.
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('коллега');
+
+    connection.handlers.onTrouble([{peerId: 'коллега', kind: 'no-path'}]);
+
+    expect(room.state().troubles).toEqual([]);
+  });
+
+  it('о попрощавшемся — тоже: он вернулся под новым именем, а неудачи идут от прежнего', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('прежний');
+    connection.channel('bye').onMessage(true, {peerId: 'прежний'});
+    connection.handlers.onPeerJoin('новый');
+
+    connection.handlers.onTrouble([{peerId: 'прежний', kind: 'no-path'}]);
+
+    expect(room.state().troubles).toEqual([]);
+  });
+
+  it('а о том, кого в разговоре нет, — показывается', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('коллега');
+
+    connection.handlers.onTrouble([{peerId: 'третий', kind: 'no-path'}]);
+
+    expect(room.state().troubles).toEqual([{peerId: 'третий', kind: 'no-path'}]);
+  });
+
   it('снятая жалоба очищает состояние', async () => {
     const {room, connection} = await openRoom();
     connection.handlers.onTrouble([{peerId: 'петя', kind: 'no-path'}]);
