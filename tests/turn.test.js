@@ -153,6 +153,50 @@ describe('пропуск в приглашении', () => {
     expect(unpackPass(btoa('{"a":"x"}'))).toBe(null);
   });
 
+  it('пропуск к ретранслятору по адресу — короткий: около сорока знаков, а не сто с лишним', async () => {
+    const пропуск = await passFor({address: '195.58.52.143:3478', secret: 'ключ', now: СЕЙЧАС});
+    const упаковка = packPass(пропуск);
+
+    expect(упаковка.length).toBeLessThanOrEqual(44);
+    expect(unpackPass(упаковка, {now: СЕЙЧАС})).toEqual(пропуск);
+  });
+
+  it('адрес без порта и с приставкой turn: — тоже коротко и без потерь', async () => {
+    for (const address of ['195.58.52.143', 'turn:195.58.52.143:3478']) {
+      const пропуск = await passFor({address, secret: 'ключ', now: СЕЙЧАС});
+      const упаковка = packPass(пропуск);
+      expect(упаковка.length).toBeLessThanOrEqual(44);
+      // Адрес может прийти без приставки — важно, что ретранслятор тот же.
+      expect(serversFromPass(unpackPass(упаковка, {now: СЕЙЧАС}))).toEqual(serversFromPass(пропуск));
+    }
+  });
+
+  it('имя вместо адреса — прежний вид, длиннее, но работает', async () => {
+    const пропуск = await passFor({address: 'relay.example.org:3478', secret: 'ключ', now: СЕЙЧАС});
+
+    expect(unpackPass(packPass(пропуск), {now: СЕЙЧАС})).toEqual(пропуск);
+  });
+
+  it('старые ссылки, с пропуском прежнего вида, по-прежнему открываются', async () => {
+    const пропуск = await passFor({address: '195.0.2.1', secret: 'ключ', now: СЕЙЧАС});
+    const прежний = btoa(JSON.stringify({a: пропуск.address, u: пропуск.username, c: пропуск.credential}))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+    expect(unpackPass(прежний, {now: СЕЙЧАС})).toEqual(пропуск);
+  });
+
+  it('короткий просроченный — тоже отбрасывается', async () => {
+    const пропуск = await passFor({address: '195.0.2.1', secret: 'ключ', now: СЕЙЧАС});
+
+    expect(unpackPass(packPass(пропуск), {now: СЕЙЧАС + (TICKET_SECONDS + 1) * 1000})).toBe(null);
+  });
+
+  it('обрезанный короткий — без ретранслятора, а не мусор', async () => {
+    const пропуск = await passFor({address: '195.0.2.1', secret: 'ключ', now: СЕЙЧАС});
+
+    expect(unpackPass(packPass(пропуск).slice(0, 20), {now: СЕЙЧАС})).toBe(null);
+  });
+
   it('без ретранслятора пропуска нет', async () => {
     expect(await passFor({address: '', secret: 'ключ'})).toBe(null);
     expect(await passFor({address: 'x', secret: ''})).toBe(null);

@@ -118,15 +118,71 @@ export const passFor = async ({address, secret, now} = {}) => {
   return {address: clean, username, credential};
 };
 
-export const packPass = ({address, username, credential}) =>
-  toBase64Url(JSON.stringify({a: address, u: username, c: credential}));
+// Короткий вид — для самого частого случая: ретранслятор по адресу, имя
+// пропуска стандартное. Байтами: вид (1), адрес (4), порт (2, ноль — «не
+// указан»), срок (4), подпись (20). Выходит 31 байт, около сорока знаков в
+// ссылке — против ста с лишним у текстового. Всё прочее (имя хоста вместо
+// адреса, нестандартное имя) едет прежним текстовым видом.
+const COMPACT = 1;
+const IPV4 = /^(?:turns?:)?(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?::(\d{1,5}))?$/i;
+
+const bytesToBase64Url = bytes =>
+  btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+const base64UrlToBytes = text => {
+  const padded = text.replace(/-/g, '+').replace(/_/g, '/');
+  return Uint8Array.from(atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, '=')), c => c.charCodeAt(0));
+};
+
+const packCompact = ({address, username, credential}) => {
+  const ip = IPV4.exec(String(address).trim());
+  const [until, name] = String(username).split(':');
+  if (!ip || name !== 'sozvon' || !/^\d+$/.test(until)) return null;
+  const octets = ip.slice(1, 5).map(Number);
+  const port = Number(ip[5] ?? 0);
+  if (octets.some(n => n > 255) || port > 65535) return null;
+  let signature;
+  try {
+    signature = Uint8Array.from(atob(credential), c => c.charCodeAt(0));
+  } catch {
+    return null;
+  }
+  if (signature.length !== 20) return null;
+  const bytes = new Uint8Array(31);
+  const view = new DataView(bytes.buffer);
+  bytes[0] = COMPACT;
+  bytes.set(octets, 1);
+  view.setUint16(5, port);
+  view.setUint32(7, Number(until));
+  bytes.set(signature, 11);
+  return bytesToBase64Url(bytes);
+};
+
+const unpackCompact = blob => {
+  const bytes = base64UrlToBytes(blob);
+  if (bytes.length !== 31 || bytes[0] !== COMPACT) return null;
+  const view = new DataView(bytes.buffer);
+  const port = view.getUint16(5);
+  const ip = [...bytes.slice(1, 5)].join('.');
+  return {
+    a: port ? `${ip}:${port}` : ip,
+    u: `${view.getUint32(7)}:sozvon`,
+    c: toBase64(bytes.slice(11)),
+  };
+};
+
+export const packPass = pass =>
+  packCompact(pass) ??
+  toBase64Url(JSON.stringify({a: pass.address, u: pass.username, c: pass.credential}));
 
 // Срок пропуска записан в самом имени: «срок:кто». Просроченный отбрасываем
 // сразу — ретранслятор его всё равно не примет, а попытка стоила бы
 // времени на каждом соединении.
 export const unpackPass = (blob, {now = Date.now()} = {}) => {
   try {
-    const {a, u, c} = JSON.parse(fromBase64Url(String(blob ?? '')));
+    const text = String(blob ?? '');
+    // Текстовый вид — это JSON, а он в base64 всегда начинается с «ey».
+    const {a, u, c} = text.startsWith('ey') ? JSON.parse(fromBase64Url(text)) : (unpackCompact(text) ?? {});
     const address = String(a ?? '').trim();
     const username = String(u ?? '');
     const credential = String(c ?? '');
