@@ -1,6 +1,7 @@
 import {generateSecret, linkToSecret, passFromLink} from './room-secret.js';
 import {codeFromLink} from './signal/manual.js';
 import {connectByHand, readCode} from './signal/by-hand.js';
+import {isSlim} from './signal/slim-sdp.js';
 import {createRoom, makeWho} from './room.js';
 import {createAwake} from './awake.js';
 import {familiesFor, parseFamilyNames} from './signal/public-channels.js';
@@ -263,6 +264,7 @@ const enter = async (secret, byHand = null) => {
       connectFn = connectByHand({
         role: byHand.role,
         offer,
+        legacy: byHand.role === 'guest' && !isSlim(byHand.offer),
         servers: serversFromPass(pass),
         pass: byHand.role === 'host' ? packed : null,
       });

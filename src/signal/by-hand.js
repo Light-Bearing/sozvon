@@ -16,7 +16,7 @@
 // перезапуск связи — договаривается по каналу данных внутри самого
 // соединения. Почтальон нужен только один раз.
 
-import {gatherComplete, manualLink, unpack} from './manual.js';
+import {gatherComplete, manualLink, pack, unpack} from './manual.js';
 import {isSlim, slimPack, slimUnpack} from './slim-sdp.js';
 import {withBetterAudio} from '../opus.js';
 
@@ -45,6 +45,9 @@ export const codeFrom = text => {
 export const connectByHand = ({
   role,
   offer = null,
+  // Приглашение пришло длинным кодом от версии старше 0.25 — она короткого
+  // ответа не прочтёт, поэтому отвечаем ей тем же длинным видом.
+  legacy = false,
   servers = [],
   base,
   pass = null,
@@ -223,7 +226,7 @@ export const connectByHand = ({
       await pc.setRemoteDescription(offer);
       await pc.setLocalDescription();
       await gathered();
-      invite = slimPack(pc.localDescription);
+      invite = legacy ? await pack(pc.localDescription) : slimPack(pc.localDescription);
     }
     handlers.onChanged?.();
   })();
