@@ -1,7 +1,7 @@
 import {generateSecret, linkToSecret, passFromLink} from './room-secret.js';
 import {codeFromLink} from './signal/manual.js';
 import {connectByHand, readCode} from './signal/by-hand.js';
-import {createRoom} from './room.js';
+import {createRoom, makeWho} from './room.js';
 import {createAwake} from './awake.js';
 import {familiesFor, parseFamilyNames} from './signal/public-channels.js';
 import {forgetShift, renderCall} from './ui/call.js';
@@ -29,7 +29,20 @@ let room = null;
 // вписанное пришлось бы сначала стирать, чтобы назваться по-своему, и
 // человек не отличил бы своё имя от придуманного за него. Пустое поле
 // значит «зовите как придумали», и ровно это в нём и написано.
-const HINT = makeName();
+//
+// Придуманное имя живёт во вкладке: перезагрузил страницу посреди разговора
+// — и остался тем же «Шумным Облаком», а не стал для остальных кем-то новым.
+const HINT = (() => {
+  try {
+    const kept = sessionStorage.getItem('созвон-придуманное-имя');
+    if (kept) return kept;
+    const fresh = makeName();
+    sessionStorage.setItem('созвон-придуманное-имя', fresh);
+    return fresh;
+  } catch {
+    return makeName();
+  }
+})();
 let given = trimName(recall('имя'));
 let myName = given ?? HINT;
 const picked = {
@@ -203,6 +216,20 @@ const awake = createAwake({onWake: () => void room?.wake()});
 
 // byHand — обмен вручную: {role: 'host'} или {role: 'guest', offer, pass}.
 // Без него — обычный разговор через публичные каналы.
+// Знак вкладки — переживает перезагрузку, но не открытие новой вкладки:
+// так собеседники отличают «перезагрузил» от «пришёл ещё один человек».
+const tabWho = () => {
+  try {
+    const kept = sessionStorage.getItem('созвон-вкладка');
+    if (kept) return kept;
+    const fresh = makeWho();
+    sessionStorage.setItem('созвон-вкладка', fresh);
+    return fresh;
+  } catch {
+    return makeWho();
+  }
+};
+
 const enter = async (secret, byHand = null) => {
   // При обмене вручную секрет комнаты не нужен никому, и в адресе ему
   // делать нечего: у гостя там приглашение, и стирать его нельзя.
@@ -251,6 +278,7 @@ const enter = async (secret, byHand = null) => {
       // отдельной копии в main.js больше нет, поэтому её нечему рассогласовать
       // с разметкой и нечего забыть сбросить между звонками.
       name: myName,
+      who: tabWho(),
       onChange: paint,
     });
     await awake.start();

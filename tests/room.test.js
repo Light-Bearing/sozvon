@@ -1460,3 +1460,63 @@ describe('лицо в кадре и мемы по жестам', () => {
     expect(room.state().memes.has('петя')).toBe(false);
   });
 });
+
+describe('перезагрузил страницу — вернулся, а не новый человек', () => {
+  const ЗНАК = 'znak-vkladki-1234';
+
+  it('прежняя вкладка ещё числится — убираем её молча и говорим «снова в разговоре»', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('прежний');
+    connection.channel('name').onMessage('Маша', {peerId: 'прежний'});
+    connection.channel('who').onMessage(ЗНАК, {peerId: 'прежний'});
+
+    connection.handlers.onPeerJoin('новый');
+    connection.channel('who').onMessage(ЗНАК, {peerId: 'новый'});
+
+    expect(room.state().peers.map(p => p.peerId)).toEqual(['новый']);
+    expect(room.state().notice.text).toBe('Маша снова в разговоре');
+    // Запоздалый уход прежнего — уже не «связь прервалась».
+    connection.handlers.onPeerLeave('прежний');
+    expect(room.state().notice.text).toBe('Маша снова в разговоре');
+  });
+
+  it('прежняя уже пропала с «связь прервалась» — вернувшегося называем', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('прежний');
+    connection.channel('name').onMessage('Маша', {peerId: 'прежний'});
+    connection.channel('who').onMessage(ЗНАК, {peerId: 'прежний'});
+    connection.handlers.onPeerLeave('прежний');
+    expect(room.state().notice.text).toBe('Маша — связь прервалась');
+
+    connection.handlers.onPeerJoin('новый');
+    connection.channel('who').onMessage(ЗНАК, {peerId: 'новый'});
+
+    expect(room.state().notice.text).toBe('Маша снова в разговоре');
+  });
+
+  it('другой знак — это другой человек, никого не убираем', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('маша');
+    connection.channel('who').onMessage(ЗНАК, {peerId: 'маша'});
+
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('who').onMessage('drugoy-znak-5678', {peerId: 'петя'});
+
+    expect(room.state().peers.map(p => p.peerId)).toEqual(['маша', 'петя']);
+    expect(room.state().notice).toBe(null);
+  });
+
+  it('свой знак рассылаем каждому вошедшему; мусор в знаке отбрасываем', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('маша');
+    expect(connection.channel('who').sent).toHaveLength(1);
+    expect(connection.channel('who').sent[0]).toMatch(/^[A-Za-z0-9_-]{8,40}$/);
+
+    connection.channel('who').onMessage('<script>', {peerId: 'маша'});
+    connection.channel('who').onMessage(ЗНАК, {peerId: 'маша'});
+    connection.handlers.onPeerJoin('петя');
+    connection.channel('who').onMessage('<script>', {peerId: 'петя'});
+
+    expect(room.state().peers).toHaveLength(2);
+  });
+});

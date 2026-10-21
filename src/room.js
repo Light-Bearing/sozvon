@@ -16,6 +16,10 @@ import {cleanFace, cleanMeme} from './vision-logic.js';
 
 const STATS_EVERY_MS = 2_000;
 
+const WHO = /^[A-Za-z0-9_-]{8,40}$/;
+export const makeWho = () =>
+  Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(36).padStart(2, '0')).join('').slice(0, 16);
+
 export const createRoom = async ({
   secret,
   onChange = () => {},
@@ -28,6 +32,10 @@ export const createRoom = async ({
   // ретранслятор соединениям раздаёт src/rtc.js, комната о нём не знает —
   // ей нужно лишь положить пропуск в ссылку.
   pass = null,
+  // Знак этой вкладки: переживает перезагрузку страницы (main.js держит его
+  // в sessionStorage), а номер в сети при перезагрузке новый. По знаку
+  // собеседники узнают вернувшегося — см. канал 'who' ниже.
+  who = makeWho(),
 }) => {
   const peers = new Map();
   // Экраны собеседников — отдельно от лиц: это две разные картинки, и
@@ -163,6 +171,7 @@ export const createRoom = async ({
   let chatChannel = null;
   let screensChannel = null;
   let mediaChannel = null;
+  let whoChannel = null;
   let faceChannel = null;
   let memeChannel = null;
   let byeChannel = null;
@@ -188,7 +197,14 @@ export const createRoom = async ({
   const screenSaid = new Map();
   const lastScreen = new Map();
 
+  // Кто есть кто через перезагрузки: знак вкладки → её номер сейчас, и
+  // последнее известное имя по знаку — у вернувшегося новое ещё не дошло.
+  const peerByWho = new Map();
+  const whoOf = new Map();
+  const nameByWho = new Map();
+
   const forget = peerId => {
+    whoOf.delete(peerId);
     peers.delete(peerId);
     screens.delete(peerId);
     screenSaid.delete(peerId);
@@ -329,6 +345,7 @@ export const createRoom = async ({
           // но не будет знать, что это экран, а не забытая плитка.
           void screensChannel?.send(screenWanted);
           void mediaChannel?.send({mic: microphoneWanted, cam: cameraWanted});
+          void whoChannel?.send(who);
           // Где наше лицо — сразу, а не через пару секунд: иначе новичок
           // первые мгновения видел бы нас обрезанными как попало.
           if (selfFace) void faceChannel?.send(selfFace);
@@ -486,6 +503,37 @@ export const createRoom = async ({
       const next = trimName(raw);
       if (!next || names.get(peerId) === next) return;
       names.set(peerId, next);
+      const their = whoOf.get(peerId);
+      if (their) nameByWho.set(their, next);
+      announce();
+    };
+  }
+
+  // Знак вкладки собеседника. Перезагрузивший страницу возвращается под
+  // новым номером, а попрощаться с прежнего не успевает — вкладка рвёт
+  // соединение раньше, чем прощание уходит. Без знака остальные видели
+  // «связь прервалась» и ещё несколько секунд — призрачную плитку.
+  // Старые версии этого канала не знают и молча его пропускают.
+  whoChannel = typeof connection.action === 'function' ? connection.action('who') : null;
+  if (whoChannel) {
+    whoChannel.onMessage = (value, {peerId}) => {
+      if (typeof value !== 'string' || !WHO.test(value) || value === who) return;
+      const before = peerByWho.get(value);
+      // Имя — то, под которым его знали до перезагрузки: под ним его и
+      // помнят, даже если новое уже успело прийти.
+      const known = nameByWho.get(value) ?? names.get(before);
+      peerByWho.set(value, peerId);
+      whoOf.set(peerId, value);
+      if (names.has(peerId)) nameByWho.set(value, names.get(peerId));
+      if (!before || before === peerId) return;
+      const name = known ?? names.get(peerId) ?? 'Собеседник';
+      // Прежняя вкладка ещё числится в разговоре — убираем её молча: это
+      // тот же человек, он уже здесь.
+      if (peers.has(before)) {
+        gone.add(before);
+        forget(before);
+      }
+      tell(`${name} снова в разговоре`);
       announce();
     };
   }

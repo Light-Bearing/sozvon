@@ -15,7 +15,8 @@
     "check:mesh": "node tools/mesh-check.mjs",
     "check:hand": "node tools/manual-check.mjs",
     "check:cross": "node tools/cross-check.mjs",
-    "check:screen": "node tools/screen-check.mjs"
+    "check:screen": "node tools/screen-check.mjs",
+    "check:reload": "node tools/reload-check.mjs"
   },
   "keywords": [],
   "author": "",
