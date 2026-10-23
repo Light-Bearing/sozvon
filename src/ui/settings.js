@@ -74,6 +74,28 @@ const focusable = container =>
       !(el.tagName !== 'SUMMARY' && el.closest('details:not([open])')),
   );
 
+// Коды безопасности с каждым собеседником. Имена — только текстом: они
+// приходят из сети.
+export const renderSafety = async (panel, getCodes) => {
+  const box = panel.querySelector('#safety');
+  if (!box) return;
+  const codes = (await getCodes?.().catch?.(() => [])) ?? [];
+  const list = box.querySelector('#safety-list');
+  list.replaceChildren(
+    ...codes.map(({name, code}) => {
+      const item = document.createElement('li');
+      const who = document.createElement('span');
+      who.textContent = name;
+      const digits = document.createElement('span');
+      digits.className = 'safety-code';
+      digits.textContent = code;
+      item.append(who, digits);
+      return item;
+    }),
+  );
+  box.hidden = codes.length === 0;
+};
+
 export const createSettings = (root, actions) => {
   const panel = root.querySelector('#settings');
   const nameInput = root.querySelector('#name-input');
@@ -123,6 +145,7 @@ export const createSettings = (root, actions) => {
     relayAddress.value = relay.address ?? '';
     relaySecret.value = relay.secret ?? '';
     renderDevices(panel, await listDevices(), actions.currentDevices());
+    await renderSafety(panel, actions.safetyCodes);
     panel.hidden = false;
     showFlow();
     flowTimer = setInterval(showFlow, 2000);

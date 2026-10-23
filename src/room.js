@@ -12,6 +12,7 @@ import {createFlowTracker} from './flow.js';
 import {createChatLog, isReaction, trimText} from './chat.js';
 import {reviveOnDrop} from './revive.js';
 import {explainMediaFailure} from './media-trouble.js';
+import {codeFor} from './safety.js';
 import {cleanFace, cleanMeme} from './vision-logic.js';
 
 const STATS_EVERY_MS = 2_000;
@@ -965,6 +966,17 @@ export const createRoom = async ({
       showMeme('self', clean);
       void memeChannel?.send(clean);
       announce();
+    },
+
+    // Коды безопасности с каждым собеседником (см. src/safety.js).
+    safetyCodes: async () => {
+      const out = [];
+      for (const [peerId, pc] of Object.entries(connection.getPeers?.() ?? {})) {
+        if (!peers.has(peerId)) continue;
+        const code = await codeFor(pc);
+        if (code) out.push({peerId, name: names.get(peerId) ?? 'Собеседник', code});
+      }
+      return out;
     },
 
     // Обмен вручную: хозяин вставил ответ гостя.

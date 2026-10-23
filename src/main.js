@@ -319,6 +319,7 @@ const settings = createSettings(app, {
   },
   currentRelay: () => relay,
   currentFlow: () => room?.state().flow ?? null,
+  safetyCodes: () => room?.safetyCodes?.() ?? Promise.resolve([]),
   version: typeof __ВЕРСИЯ__ === 'string' ? __ВЕРСИЯ__ : '',
   setRelay: (field, value) => {
     relay[field] = value.trim();

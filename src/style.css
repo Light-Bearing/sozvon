@@ -1448,3 +1448,28 @@ select.field-input {
   :root { --ctl: 2.9rem; --dock-pad: 0.3rem; }
   .dock { gap: 0.35rem; }
 }
+
+/* ── код безопасности ───────────────────────────────────── */
+
+.safety { margin-block: 1rem 0.25rem; }
+.safety-list {
+  list-style: none;
+  margin: 0.4rem 0 0.5rem;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.safety-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.875rem;
+  color: var(--dim);
+}
+.safety-code {
+  font-family: 'Martian Mono', ui-monospace, monospace;
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  white-space: nowrap;
+}
