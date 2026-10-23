@@ -185,8 +185,17 @@ const отметить = (ok, что, подробно = '') => {
 // проверяется лишь то, кому он был дан. Ключ тоже выдуманный.
 const настройка = base64url(JSON.stringify({a: '127.0.0.1:9', k: 'ключ-проверки'}));
 
+// Ждём не время, а готовность: живой сайт грузится дольше дев-сервера, и
+// нажатие до загрузки уходило в пустоту.
+const экранГотов = async (t, экран) => {
+  for (let i = 0; i < 60; i++) {
+    if (await t.ev(`(() => { const e = document.querySelector('#screen-${экран}'); return Boolean(e && !e.hidden && e.querySelector('[data-name]')?.placeholder); })()`)) return;
+    await ждать(250);
+  }
+};
+
 const хозяин = await открыть(`${APP}?_=${Date.now()}#turn=${настройка}`);
-await ждать(2500);
+await экранГотов(хозяин, 'start');
 await хозяин.нажать('#start');
 await ждать(2500);
 
@@ -195,7 +204,7 @@ const ссылка = await хозяин.ev(`document.querySelector('#link')?.tex
 отметить(!/turn=/.test((await хозяин.ev('location.href')) ?? ''), 'ключ стёрт из адреса хозяина');
 
 const гость = await открыть(ссылка);
-await ждать(2500);
+await экранГотов(гость, 'join');
 await гость.нажать('#join');
 
 const плиток = t => t.ev(`document.querySelectorAll('#tiles .tile').length`);
@@ -337,7 +346,7 @@ if (секунд < 40) {
   // Второй гость входит и просто закрывает вкладку — это тоже уход сам.
   await ждать(5500);
   const второй = await открыть(ссылка);
-  await ждать(2500);
+  await экранГотов(второй, 'join');
   await второй.нажать('#join');
   let вошёл = false;
   for (let i = 0; i < 40 && !вошёл; i++) {
@@ -360,7 +369,7 @@ if (секунд < 40) {
   // Третий входит, и его страница падает. Прощания нет — значит, обрыв.
   await ждать(5500);
   const третий = await открыть(ссылка);
-  await ждать(2500);
+  await экранГотов(третий, 'join');
   await третий.нажать('#join');
   let вошёлТретий = false;
   for (let i = 0; i < 40 && !вошёлТретий; i++) {
