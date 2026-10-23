@@ -1,5 +1,5 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {familiesFor, joinPublicChannels, parseFamilyNames} from '../src/signal/public-channels.js';
+import {familiesFor, joinPublicChannels, parseFamilyNames, watchOutage} from '../src/signal/public-channels.js';
 import {relayUrlsFor} from '../src/signal/relays.js';
 
 const FAMILY_NAMES = ['nostr', 'mqtt'];
@@ -850,5 +850,92 @@ describe('жалобы не висят вечно', () => {
     connection.troubles();
 
     expect(handlers.onTrouble).toHaveBeenCalledWith([]);
+  });
+});
+
+describe('после долгого обрыва — заново в комнату', () => {
+  it('сторож: каналы молчали дольше порога и ожили, собеседников нет — перевход', async () => {
+    vi.useFakeTimers();
+    let alive = true;
+    let t = 0;
+    const revive = vi.fn().mockResolvedValue();
+    const stop = watchOutage({alive: () => alive, idle: () => true, revive, now: () => t, outageMs: 20_000, every: 1000, settleMs: 0});
+
+    alive = false;
+    for (let i = 0; i < 25; i++) {
+      t += 1000;
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    alive = true;
+    t += 1000;
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(revive).toHaveBeenCalledTimes(1);
+    stop();
+    vi.useRealTimers();
+  });
+
+  it('короткий обрыв — без перевхода: библиотека справляется сама', async () => {
+    vi.useFakeTimers();
+    let alive = false;
+    let t = 0;
+    const revive = vi.fn();
+    const stop = watchOutage({alive: () => alive, idle: () => true, revive, now: () => t, outageMs: 20_000, every: 1000, settleMs: 0});
+    for (let i = 0; i < 5; i++) {
+      t += 1000;
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    alive = true;
+    t += 1000;
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(revive).not.toHaveBeenCalled();
+    stop();
+    vi.useRealTimers();
+  });
+
+  it('есть живой собеседник — не трогаем: перевход оборвал бы разговор', async () => {
+    vi.useFakeTimers();
+    let alive = false;
+    let t = 0;
+    const revive = vi.fn();
+    const stop = watchOutage({alive: () => alive, idle: () => false, revive, now: () => t, outageMs: 1000, every: 1000, settleMs: 0});
+    for (let i = 0; i < 3; i++) {
+      t += 1000;
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    alive = true;
+    t += 1000;
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(revive).not.toHaveBeenCalled();
+    stop();
+    vi.useRealTimers();
+  });
+
+  it('перевход: новые комнаты, а каналы сообщений и их обработчики — те же', async () => {
+    const rooms = [];
+    const families = FAMILY_NAMES.map(family => ({
+      family,
+      join: () => {
+        const fake = createFakeRoom();
+        rooms.push({family, fake});
+        return fake.room;
+      },
+    }));
+    const connection = joinPublicChannels({roomId: 'r', password: 'p', handlers: {}, families, keepTrying: () => null});
+    const chat = connection.action('chat');
+    const heard = vi.fn();
+    chat.onMessage = heard;
+
+    await connection.revive();
+
+    // Каждое семейство открыло комнату дважды; во второй канал «chat» заведён
+    // заново и слушает тем же обработчиком.
+    expect(rooms).toHaveLength(FAMILY_NAMES.length * 2);
+    const fresh = rooms.at(-1).fake;
+    expect(fresh.action('chat').onMessage).toBe(heard);
+    await connection.leave();
   });
 });

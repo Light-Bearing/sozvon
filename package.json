@@ -16,7 +16,8 @@
     "check:hand": "node tools/manual-check.mjs",
     "check:cross": "node tools/cross-check.mjs",
     "check:screen": "node tools/screen-check.mjs",
-    "check:reload": "node tools/reload-check.mjs"
+    "check:reload": "node tools/reload-check.mjs",
+    "check:outage": "node tools/outage-check.mjs"
   },
   "keywords": [],
   "author": "",
@@ -25,6 +26,7 @@
   "private": "true",
   "dependencies": {
     "@mediapipe/tasks-vision": "1.0.1",
+    "@trystero-p2p/core": "0.25.4",
     "@trystero-p2p/mqtt": "0.25.4",
     "@trystero-p2p/nostr": "0.25.4"
   },

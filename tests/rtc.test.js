@@ -1,4 +1,4 @@
-import {afterEach, describe, expect, it} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 import {createRtcClass, relayInUse, useRelay, withRelay} from '../src/rtc.js';
 
 const STUN = {urls: 'stun:stun.l.google.com:19302'};
@@ -136,5 +136,53 @@ describe('подмена ретранслятора в настройке', () =
     expect(relayInUse()).toEqual([]);
     useRelay(TURN);
     expect(relayInUse()).toEqual(TURN);
+  });
+});
+
+import {settleGathering} from '../src/rtc.js';
+
+describe('описание уходит с адресами', () => {
+  const pc = state => {
+    const listeners = new Set();
+    return {
+      iceGatheringState: state,
+      addEventListener: (_, f) => listeners.add(f),
+      removeEventListener: (_, f) => listeners.delete(f),
+      finish() {
+        this.iceGatheringState = 'complete';
+        for (const f of listeners) f();
+      },
+      listeners,
+    };
+  };
+
+  it('адреса уже собраны — не ждём', async () => {
+    await expect(settleGathering(pc('complete'), 10_000)).resolves.toBeUndefined();
+  });
+
+  it('ждём, пока соберутся', async () => {
+    const p = pc('gathering');
+    let done = false;
+    const wait = settleGathering(p, 10_000).then(() => (done = true));
+    await Promise.resolve();
+    expect(done).toBe(false);
+
+    p.finish();
+    await wait;
+
+    expect(done).toBe(true);
+    expect(p.listeners.size).toBe(0);
+  });
+
+  it('но не дольше предела: полный сбор бывает и по сорок секунд', async () => {
+    vi.useFakeTimers();
+    const p = pc('gathering');
+    let done = false;
+    void settleGathering(p, 1500).then(() => (done = true));
+
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(done).toBe(true);
+    vi.useRealTimers();
   });
 });

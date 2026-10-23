@@ -1,6 +1,8 @@
 import {joinRoom as joinNostr, getRelaySockets as nostrSockets} from '@trystero-p2p/nostr';
 import {joinRoom as joinMqtt, getRelaySockets as mqttSockets} from '@trystero-p2p/mqtt';
+import {pauseRelayReconnection, resumeRelayReconnection} from '@trystero-p2p/core';
 import {createRtcClass} from '../rtc.js';
+import {keepRelaysTrying} from './keep-trying.js';
 import {createPeerRegistry} from './dedupe.js';
 import {relayUrlsFor} from './relays.js';
 import {troubleFrom} from './trouble.js';
@@ -62,6 +64,35 @@ export const familiesFor = (names, all = FAMILIES) =>
 // иначе висела бы вечно — поверх уже работающего разговора.
 export const TROUBLE_FRESH_MS = 45_000;
 
+// Долгий обрыв: все каналы молчали дольше outageMs, потом ожили. Если в
+// этот момент живых собеседников нет — входим в комнату заново (revive).
+// Опрос раз в every: событий об ожившем канале библиотека не даёт.
+export const OUTAGE_MS = 20_000;
+export const watchOutage = ({alive, idle, revive, now = () => Date.now(), outageMs = OUTAGE_MS, every = 2000, settleMs = 2000}) => {
+  let downSince = null;
+  let busy = false;
+  const timer = setInterval(async () => {
+    if (busy) return;
+    if (!alive()) {
+      downSince ??= now();
+      return;
+    }
+    if (downSince === null) return;
+    const long = now() - downSince >= outageMs;
+    downSince = null;
+    if (!long || !idle()) return;
+    busy = true;
+    // Даём ожившим каналам договориться о подписках, потом входим заново.
+    await new Promise(r => setTimeout(r, settleMs));
+    try {
+      await revive();
+    } finally {
+      busy = false;
+    }
+  }, every);
+  return () => clearInterval(timer);
+};
+
 export const joinPublicChannels = ({
   roomId,
   password,
@@ -69,8 +100,12 @@ export const joinPublicChannels = ({
   families = FAMILIES,
   rtcPolyfill = createRtcClass(),
   now = () => Date.now(),
+  // Сторож каналов (см. keep-trying.js). Подменяется в тестах: настоящий
+  // трогает общее состояние библиотеки.
+  keepTrying = () => keepRelaysTrying({pause: pauseRelayReconnection, resume: resumeRelayReconnection}),
 }) => {
   const registry = createPeerRegistry();
+  const stopKeeping = keepTrying();
 
   // Участники, чей поток уже пропущен наверх. Второй и далее поток от
   // того же участника отбрасываем — неважно, каким семейством он пришёл:
@@ -173,8 +208,9 @@ export const joinPublicChannels = ({
     room.addTrack(track, stream, {target: peerId, metadata});
   };
 
-  const channels = families.map(({family, join, getRelaySockets = () => ({})}) => {
-    const relays = relayUrlsFor(family);
+  // Комната одного семейства каналов. Вынесено отдельно, чтобы её можно
+  // было открыть заново — см. revive() ниже.
+  const openRoom = ({family, join}, relays) => {
     const room = join(
       {
         appId: APP_ID,
@@ -252,8 +288,20 @@ export const joinPublicChannels = ({
       takeTrack(track, peerId, roleOf(metadata));
     };
 
-    return {family, relays, room, getRelaySockets};
+    return room;
+  };
+
+  const channels = families.map(spec => {
+    const {family, getRelaySockets = () => ({})} = spec;
+    const relays = relayUrlsFor(family);
+    return {family, relays, getRelaySockets, spec, room: openRoom(spec, relays)};
   });
+
+  // Каналы сообщений по именам: после revive() их надо завести заново в
+  // новых комнатах и снова повесить те же обработчики.
+  const namespaces = new Map();
+  const makeActions = namespace =>
+    new Map(channels.map(({family, room}) => [family, room.makeAction(namespace)]));
 
   const roomOf = family => channels.find(c => c.family === family).room;
 
@@ -262,6 +310,33 @@ export const joinPublicChannels = ({
   // (peer.mjs ничего не делает, если трек не найден), а leave обязан
   // закрыть вообще все соединения, а не только соединение владельца.
   const everyRoom = fn => channels.map(({room}) => fn(room));
+
+  // Войти в комнату заново. После долгого обрыва сети заготовки соединений
+  // внутри библиотеки приходят в негодность: каналы ожили, собеседники
+  // друг друга находят, а рукопожатие идёт без единого адреса, и связь не
+  // встаёт. Свежий вход заводит новые заготовки. Зовётся только когда живых
+  // собеседников нет — разговор от этого ничего не теряет.
+  const revive = async () => {
+    for (const channel of channels) {
+      try {
+        await channel.room.leave();
+      } catch {}
+      channel.room = openRoom(channel.spec, channel.relays);
+    }
+    for (const [namespace, entry] of namespaces) {
+      entry.actions = makeActions(namespace);
+      if (entry.onMessage) for (const action of entry.actions.values()) action.onMessage = entry.onMessage;
+    }
+    // Поток досылать некому: собеседников в новых комнатах ещё нет, он уйдёт
+    // каждому при входе (onPeerJoin выше).
+  };
+
+  const aliveNow = () =>
+    channels.some(({relays, getRelaySockets}) => {
+      const sockets = getRelaySockets();
+      return relays.some(url => sockets[url]?.readyState === SOCKET_OPEN);
+    });
+  const stopWatching = watchOutage({alive: aliveNow, idle: () => registry.peers().length === 0, revive, now});
 
   return {
     // Раздаём каждому участнику только через комнату его владельца.
@@ -315,9 +390,8 @@ export const joinPublicChannels = ({
         ),
       ),
     action: namespace => {
-      const actions = new Map(
-        channels.map(({family, room}) => [family, room.makeAction(namespace)]),
-      );
+      if (!namespaces.has(namespace)) namespaces.set(namespace, {actions: makeActions(namespace), onMessage: null});
+      const entry = namespaces.get(namespace);
       return {
         // Адресуем и группируем по владельцу: каждому каналу — один вызов
         // send со списком его участников. Каналу, чьих участников сейчас
@@ -331,7 +405,7 @@ export const joinPublicChannels = ({
           }
           return Promise.all(
             [...targetsByOwner].map(([family, targets]) =>
-              actions.get(family).send(data, {target: targets}),
+              entry.actions.get(family).send(data, {target: targets}),
             ),
           );
         },
@@ -339,7 +413,8 @@ export const joinPublicChannels = ({
         // сообщения, поэтому onMessage вешаем на все три семейства как
         // есть.
         set onMessage(fn) {
-          for (const action of actions.values()) action.onMessage = fn;
+          entry.onMessage = fn;
+          for (const action of entry.actions.values()) action.onMessage = fn;
         },
       };
     },
@@ -358,6 +433,11 @@ export const joinPublicChannels = ({
       if (dropStale()) tellTroubles();
       return listTroubles();
     },
-    leave: () => Promise.all(everyRoom(room => room.leave())),
+    revive,
+    leave: () => {
+      stopKeeping?.();
+      stopWatching?.();
+      return Promise.all(everyRoom(room => room.leave()));
+    },
   };
 };

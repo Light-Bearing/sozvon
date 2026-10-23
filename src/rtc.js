@@ -40,6 +40,29 @@ export const withRelay = (config, servers = []) => {
 
 // Класс соединения для библиотеки (её параметр rtcPolyfill). Base — ради
 // проверок: в тестовой среде настоящего RTCPeerConnection нет.
+// Сколько ждать адресов после setLocalDescription. Свои адреса появляются
+// мгновенно, внешний — за доли секунды, ретранслятор — меньше чем за
+// секунду; полный сбор бывает и по сорок секунд (недоступный сервер
+// отвечает отказом нескоро) — столько не ждём.
+export const GATHER_WAIT_MS = 1500;
+
+// Ждём, пока соберутся адреса, но не дольше limit. Отказ — не наша забота:
+// ждать нечего, setLocalDescription уже ответил сам.
+export const settleGathering = (pc, limit = GATHER_WAIT_MS) =>
+  new Promise(resolve => {
+    if (pc.iceGatheringState === 'complete') return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      pc.removeEventListener?.('icegatheringstatechange', check);
+      resolve();
+    };
+    const check = () => {
+      if (pc.iceGatheringState === 'complete') done();
+    };
+    const timer = setTimeout(done, limit);
+    pc.addEventListener?.('icegatheringstatechange', check);
+  });
+
 export const createRtcClass = (Base = globalThis.RTCPeerConnection) => {
   if (typeof Base !== 'function') return undefined;
 
@@ -48,6 +71,21 @@ export const createRtcClass = (Base = globalThis.RTCPeerConnection) => {
       // Заготовке ретранслятор не положен: она почти наверняка никому не
       // пригодится, а место на нём займёт.
       super(withRelay(config, []), ...rest);
+    }
+
+    // Описание уходит собеседнику только с адресами. Библиотека шлёт его
+    // сразу после setLocalDescription, а адреса досылает следом — но у
+    // заготовки, которую она только что обновила со сменой адресов, их
+    // досылать некому: она ещё ни к кому не привязана, и адреса теряются.
+    // Гость, пришедший в этот миг, получал описание без единого адреса, и
+    // связь не вставала — «прямого пути нет». После долгого обрыва сети
+    // так выходило всегда: отложенные обновления срабатывают разом.
+    // Поэтому ждём сбора (не дольше полутора секунд): тогда адреса — уже в
+    // самом описании, а досылка остаётся запасной.
+    async setLocalDescription(description, ...rest) {
+      await super.setLocalDescription(description, ...rest);
+      if (description?.type === 'rollback') return;
+      await settleGathering(this);
     }
 
     setRemoteDescription(description, ...rest) {
