@@ -117,6 +117,14 @@ const открыть = async url => {
   await send('Page.addScriptToEvaluateOnNewDocument', {
     source: `
       window.__описания = [];
+      window.__соединения = [];
+      const PC0 = window.RTCPeerConnection;
+      window.RTCPeerConnection = class extends PC0 {
+        constructor(...args) {
+          super(...args);
+          window.__соединения.push(this);
+        }
+      };
       const sld = RTCPeerConnection.prototype.setLocalDescription;
       RTCPeerConnection.prototype.setLocalDescription = function (...args) {
         const turn = (this.getConfiguration().iceServers || [])
@@ -220,6 +228,50 @@ if (секунд < 40) {
   отметить(увиденное?.тёмная === false, 'плитка не затемнена поверх живой картинки');
   отметить(увиденное?.звукЖив === true, 'звук хозяина дошёл до гостя');
   отметить(увиденное?.звукИграет === true, 'звук играет, браузер его не заблокировал');
+
+  // Как кодируется то, что уходит от хозяина: звук — с избыточностью и на
+  // поднятом битрейте, дорожки — с подсказками кодеру.
+  const кодер = await хозяин.ev(`(async () => {
+    const живые = window.__соединения.filter(pc => pc.connectionState === 'connected');
+    // Статистика называет кодек внутри обёртки RED (opus), поэтому RED
+    // проверяем по принятому описанию — что стоит первым, тем кодер и шлёт, —
+    // а его действие видно по размеру пакета: с избыточностью он вдвое больше.
+    const out = {звук: [], цель: [], подсказки: [], пакет: []};
+    for (const pc of живые) {
+      const sdp = pc.remoteDescription?.sdp ?? '';
+      const first = /^m=audio \\S+ \\S+ (\\d+)/m.exec(sdp)?.[1];
+      const red = first && new RegExp('^a=rtpmap:' + first + ' red/', 'm').test(sdp);
+      if (first) out.звук.push(red ? 'red' : 'pt ' + first);
+      const take = async () => {
+        let o = null;
+        (await pc.getStats()).forEach(r => {
+          if (r.type === 'outbound-rtp' && r.kind === 'audio') {
+            o = {b: r.bytesSent, p: r.packetsSent};
+            out.цель.push(r.targetBitrate);
+          }
+        });
+        return o;
+      };
+      const a1 = await take();
+      await new Promise(r => setTimeout(r, 1500));
+      const a2 = await take();
+      if (a1 && a2 && a2.p > a1.p) out.пакет.push(Math.round((a2.b - a1.b) / (a2.p - a1.p)));
+      for (const s of pc.getSenders()) if (s.track) out.подсказки.push(s.track.kind + ':' + s.track.contentHint);
+    }
+    return JSON.stringify(out);
+  })()`);
+  const к = JSON.parse(кодер ?? '{}');
+  отметить(
+    к.звук?.length > 0 && к.звук.every(m => m === 'red'),
+    'звук уходит с избыточностью (RED)',
+    `${(к.звук ?? []).join(', ')}; байт на пакет ${(к.пакет ?? []).join(', ')}`,
+  );
+  отметить(к.цель?.length > 0 && к.цель.every(b => b >= 60000), 'звук — на 64 кбит/с', (к.цель ?? []).join(', '));
+  отметить(
+    (к.подсказки ?? []).includes('audio:speech') && (к.подсказки ?? []).includes('video:motion'),
+    'подсказки кодеру: речь и движение',
+    (к.подсказки ?? []).join(', '),
+  );
 
   // Выключил камеру — у собеседника плитка темнеет, а не держит последний
   // кадр. Живьём однажды так и было: картинка застывала у того, кому шла.

@@ -44,3 +44,28 @@ describe('звук почище', () => {
     expect(withBetterAudio(null)).toBe(null);
   });
 });
+
+import {preferRed} from '../src/opus.js';
+
+describe('избыточный звук', () => {
+  const с = (list, extra = '') =>
+    [`m=audio 9 UDP/TLS/RTP/SAVPF ${list}`, 'a=rtpmap:111 opus/48000/2', 'a=rtpmap:63 red/48000/2', 'a=fmtp:63 111/111', extra, 'm=video 9 UDP/TLS/RTP/SAVPF 96 63', ''].join('\r\n');
+
+  it('RED, предложенный собеседником, встаёт первым', () => {
+    expect(preferRed(с('111 63 9'))).toContain('m=audio 9 UDP/TLS/RTP/SAVPF 63 111 9');
+  });
+
+  it('видео не трогаем', () => {
+    expect(preferRed(с('111 63 9'))).toContain('m=video 9 UDP/TLS/RTP/SAVPF 96 63');
+  });
+
+  it('собеседник RED не предлагал — ничего не меняется', () => {
+    const sdp = 'm=audio 9 UDP/TLS/RTP/SAVPF 111 9\r\na=rtpmap:111 opus/48000/2\r\n';
+    expect(preferRed(sdp)).toBe(sdp);
+  });
+
+  it('RED без связи с Opus не трогаем', () => {
+    const sdp = с('111 63 9').replace('a=fmtp:63 111/111', 'a=fmtp:63 0/0');
+    expect(preferRed(sdp)).toBe(sdp);
+  });
+});

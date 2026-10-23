@@ -19,6 +19,20 @@ export const constraintsFor = step => ({
 export const withDevice = (constraint, deviceId) =>
   deviceId && constraint ? {...constraint, deviceId: {exact: deviceId}} : constraint;
 
+// Подсказка кодеру, что за дорожка. Без неё браузер не знает, что шлёт, и
+// при нехватке канала жертвует не тем: у экрана — чёткостью (текст
+// расплывается), у голоса — разборчивостью. «detail» у экрана заодно
+// говорит Chrome беречь разрешение, а не частоту кадров.
+export const HINTS = {audio: 'speech', video: 'motion', screen: 'detail'};
+export const hint = (track, kind) => {
+  if (track && 'contentHint' in track) {
+    try {
+      track.contentHint = HINTS[kind];
+    } catch {}
+  }
+  return track;
+};
+
 export const createMedia = ({
   getUserMedia = constraints => navigator.mediaDevices.getUserMedia(constraints),
   enumerateDevices = () => navigator.mediaDevices?.enumerateDevices?.() ?? Promise.resolve([]),
@@ -63,6 +77,7 @@ export const createMedia = ({
         : {audio: false, video: withZoom(withDevice(constraint, preferred.video))},
     );
     const [next] = kind === 'audio' ? captured.getAudioTracks() : captured.getVideoTracks();
+    hint(next, kind);
     // Порядок важен: сначала забрать новую дорожку, потом гасить старую.
     // Наоборот — и при отказе захвата человек остался бы вообще без звука.
     old.stop();
@@ -144,6 +159,7 @@ export const createMedia = ({
       }
     }
     const [next] = captured.getVideoTracks();
+    hint(next, 'video');
     old.stop();
     stream.removeTrack(old);
     stream.addTrack(next);
@@ -202,6 +218,7 @@ export const createMedia = ({
         const captured = await getDisplayMedia({video: {frameRate: {ideal: 15}}, audio: false});
         const [next] = captured.getVideoTracks();
         if (!next) return null;
+        hint(next, 'screen');
         if (onStopped) next.addEventListener('ended', onStopped);
         screenStream = captured;
         return {added: next, stream: captured};
@@ -269,6 +286,7 @@ export const createMedia = ({
       if (stream?.getAudioTracks().length) return null; // уже захвачен
       const captured = await captureChosen('audio', constraintsFor(step).audio);
       const [track] = captured.getAudioTracks();
+      hint(track, 'audio');
       if (stream) stream.addTrack(track);
       else stream = captured;
       return track;
@@ -283,6 +301,7 @@ export const createMedia = ({
       if (stream?.getVideoTracks().length) return null; // уже захвачена
       const captured = await captureChosen('video', video);
       const [track] = captured.getVideoTracks();
+      hint(track, 'video');
       if (stream) stream.addTrack(track);
       else stream = captured;
       return track;

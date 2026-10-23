@@ -329,3 +329,34 @@ describe('выбранного устройства больше нет', () => 
     expect(getUserMedia).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('подсказки кодеру', () => {
+  it('микрофон — речь, камера — движение', async () => {
+    const mic = {kind: 'audio', contentHint: '', stop: vi.fn()};
+    const cam = {kind: 'video', contentHint: '', stop: vi.fn()};
+    const getUserMedia = vi.fn(async c =>
+      c.audio
+        ? {getAudioTracks: () => [mic], getVideoTracks: () => [], getTracks: () => [mic], addTrack: vi.fn()}
+        : {getAudioTracks: () => [], getVideoTracks: () => [cam], getTracks: () => [cam], addTrack: vi.fn()},
+    );
+    const media = createMedia({getUserMedia, enumerateDevices: async () => []});
+
+    await media.captureMicrophone(stepForPeers(2));
+    await media.captureCamera(stepForPeers(2));
+
+    expect(mic.contentHint).toBe('speech');
+    expect(cam.contentHint).toBe('motion');
+  });
+
+  it('экран — детали: текст не расплывается', async () => {
+    const screen = {kind: 'video', contentHint: '', addEventListener: vi.fn(), stop: vi.fn()};
+    const media = createMedia({
+      getUserMedia: vi.fn(),
+      getDisplayMedia: async () => ({getVideoTracks: () => [screen], getTracks: () => [screen]}),
+    });
+
+    await media.useScreen(true, stepForPeers(2));
+
+    expect(screen.contentHint).toBe('detail');
+  });
+});

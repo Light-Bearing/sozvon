@@ -34,7 +34,31 @@ export const boostOpus = (sdp, bitrate = OPUS_BITRATE) => {
   return out;
 };
 
+// Избыточный звук (RED): в каждом пакете едет ещё и предыдущий кусок, и
+// потерянный пакет восстанавливается из следующего. На плохом мобильном
+// интернете речь перестаёт рваться; платим примерно вдвое большим потоком
+// звука — это мелочь рядом с картинкой.
+//
+// Кодер шлёт первым из кодеков, перечисленных в описании собеседника, —
+// там RED обычно стоит после Opus. Ставим его первым у себя, только если
+// собеседник сам его предложил: значит, умеет и разобрать. Нет RED в
+// описании (Firefox его для звука не предлагает) — ничего не меняется.
+export const preferRed = sdp => {
+  if (typeof sdp !== 'string') return sdp;
+  const opus = [...sdp.matchAll(/^a=rtpmap:(\d+) opus\/48000/gim)].map(m => m[1]);
+  const red = [...sdp.matchAll(/^a=rtpmap:(\d+) red\/48000/gim)]
+    .map(m => m[1])
+    .filter(pt => opus.some(o => new RegExp(`^a=fmtp:${pt} ${o}/${o}`, 'm').test(sdp)));
+  if (!red.length) return sdp;
+  return sdp.replace(/^(m=audio \S+ \S+)((?: \d+)+)/gm, (line, head, list) => {
+    const types = list.trim().split(' ');
+    const first = types.filter(pt => red.includes(pt));
+    if (!first.length) return line;
+    return `${head} ${[...first, ...types.filter(pt => !red.includes(pt))].join(' ')}`;
+  });
+};
+
 // Описание собеседника — с поднятым потолком звука. Объект описания у
 // браузера только для чтения, поэтому отдаём новый.
 export const withBetterAudio = description =>
-  description?.sdp ? {type: description.type, sdp: boostOpus(description.sdp)} : description;
+  description?.sdp ? {type: description.type, sdp: preferRed(boostOpus(description.sdp))} : description;
