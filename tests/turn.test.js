@@ -12,21 +12,26 @@ import {
 } from '../src/turn.js';
 
 describe('адрес ретранслятора', () => {
-  it('голый field дополняется портом и получает пару — обычную и по TCP', () => {
+  it('голый адрес дополняется портом: обычный, по TCP и UDP 443 для строгих сетей', () => {
     expect(relayUrls('195.58.52.143')).toEqual([
       'turn:195.58.52.143:3478',
       'turn:195.58.52.143:3478?transport=tcp',
+      'turn:195.58.52.143:443?transport=udp',
     ]);
   });
 
-  it('свой порт уважается', () => {
-    expect(relayUrls('дом.example:3555')[0]).toBe('turn:дом.example:3555');
+  it('свой порт уважается — и 443 тогда не угадываем', () => {
+    expect(relayUrls('дом.example:3555')).toEqual([
+      'turn:дом.example:3555',
+      'turn:дом.example:3555?transport=tcp',
+    ]);
   });
 
   it('лишнее спереди и сзади человек может не вычищать', () => {
     expect(relayUrls('  turn:host:3478?transport=udp  ')).toEqual([
       'turn:host:3478',
       'turn:host:3478?transport=tcp',
+      'turn:host:443?transport=udp',
     ]);
   });
 
@@ -73,15 +78,16 @@ describe('список для льда', () => {
     expect(await turnConfigFor({secret: 'ключ'})).toEqual([]);
   });
 
-  it('оба адреса получают один и тот же пропуск', async () => {
+  it('все адреса получают один и тот же пропуск', async () => {
     const servers = await turnConfigFor({address: 'host', secret: 'ключ', now: 0});
 
-    expect(servers).toHaveLength(2);
-    expect(servers[0].username).toBe(servers[1].username);
-    expect(servers[0].credential).toBe(servers[1].credential);
+    expect(servers).toHaveLength(3);
+    expect(new Set(servers.map(s => s.username)).size).toBe(1);
+    expect(new Set(servers.map(s => s.credential)).size).toBe(1);
     expect(servers.map(s => s.urls)).toEqual([
       'turn:host:3478',
       'turn:host:3478?transport=tcp',
+      'turn:host:443?transport=udp',
     ]);
   });
 });
@@ -209,12 +215,13 @@ describe('пропуск в приглашении', () => {
     expect(await passFor({address: 'x', secret: ''})).toBe(null);
   });
 
-  it('из пропуска получается пара адресов для льда', async () => {
+  it('из пропуска получаются адреса для льда', async () => {
     const пропуск = await passFor({address: '195.0.2.1', secret: 'ключ', now: СЕЙЧАС});
 
     expect(serversFromPass(пропуск)).toEqual([
       {urls: 'turn:195.0.2.1:3478', username: пропуск.username, credential: пропуск.credential},
       {urls: 'turn:195.0.2.1:3478?transport=tcp', username: пропуск.username, credential: пропуск.credential},
+      {urls: 'turn:195.0.2.1:443?transport=udp', username: пропуск.username, credential: пропуск.credential},
     ]);
     expect(serversFromPass(null)).toEqual([]);
   });

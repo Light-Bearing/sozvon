@@ -22,8 +22,17 @@ export const relayUrls = address => {
     .replace(/^turns?:/i, '')
     .replace(/\?.*$/, '');
   if (!clean) return [];
-  const port = /:\d+$/.test(clean) ? '' : `:${DEFAULT_PORT}`;
-  return [`turn:${clean}${port}`, `turn:${clean}${port}?transport=tcp`];
+  const given = /:(\d+)$/.exec(clean)?.[1];
+  const port = given ? '' : `:${DEFAULT_PORT}`;
+  const urls = [`turn:${clean}${port}`, `turn:${clean}${port}?transport=tcp`];
+  // На стандартном порту ретранслятор слушает ещё и UDP 443 (на сервере —
+  // перенаправление, см. tools/turn/установка.md): некоторые сети выпускают
+  // наружу только 443. Для нестандартного порта не угадываем.
+  if (!given || Number(given) === DEFAULT_PORT) {
+    const host = clean.replace(/:\d+$/, '');
+    urls.push(`turn:${host}:443?transport=udp`);
+  }
+  return urls;
 };
 
 const toBase64 = bytes => btoa(String.fromCharCode(...bytes));
