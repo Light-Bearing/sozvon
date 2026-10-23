@@ -1,6 +1,6 @@
 import {joinRoom as joinNostr, getRelaySockets as nostrSockets} from '@trystero-p2p/nostr';
 import {joinRoom as joinMqtt, getRelaySockets as mqttSockets} from '@trystero-p2p/mqtt';
-import {pauseRelayReconnection, resumeRelayReconnection} from '@trystero-p2p/core';
+import {pauseRelayReconnection, resumeRelayReconnection, selfId} from '@trystero-p2p/core';
 import {createRtcClass} from '../rtc.js';
 import {keepRelaysTrying} from './keep-trying.js';
 import {createPeerRegistry} from './dedupe.js';
@@ -103,6 +103,10 @@ export const joinPublicChannels = ({
   // Сторож каналов (см. keep-trying.js). Подменяется в тестах: настоящий
   // трогает общее состояние библиотеки.
   keepTrying = () => keepRelaysTrying({pause: pauseRelayReconnection, resume: resumeRelayReconnection}),
+  // Привратник комнаты ожидания: кому можно слать своё — дорожки и
+  // сообщения. Не впущенному не уходит ничего, кроме служебного (каналы с
+  // always). Решает комната (src/room.js); по умолчанию — всем.
+  gate = () => true,
 }) => {
   const registry = createPeerRegistry();
   const stopKeeping = keepTrying();
@@ -241,8 +245,10 @@ export const joinPublicChannels = ({
       // при входе через не-владельца.
       if (troubles.delete(peerId)) tellTroubles();
       if (!registry.claim(peerId, family)) return;
-      if (localStream) room.addStream(localStream, {target: peerId});
-      sendScreen(room, peerId);
+      if (gate(peerId)) {
+        if (localStream) room.addStream(localStream, {target: peerId});
+        sendScreen(room, peerId);
+      }
       handlers.onPeerJoin?.(peerId);
     };
     room.onPeerLeave = peerId => {
@@ -256,8 +262,10 @@ export const joinPublicChannels = ({
       );
       if (ghost) {
         registry.claim(peerId, ghost.family);
-        if (localStream) ghost.room.addStream(localStream, {target: peerId});
-        sendScreen(ghost.room, peerId);
+        if (gate(peerId)) {
+          if (localStream) ghost.room.addStream(localStream, {target: peerId});
+          sendScreen(ghost.room, peerId);
+        }
         streamedPeers.delete(peerId);
         return;
       }
@@ -339,6 +347,8 @@ export const joinPublicChannels = ({
   const stopWatching = watchOutage({alive: aliveNow, idle: () => registry.peers().length === 0, revive, now});
 
   return {
+    // Свой номер в сети — один на все семейства (его выдаёт библиотека).
+    selfId,
     // Раздаём каждому участнику только через комнату его владельца.
     // Лишние соединения (у остальных семейств) существуют, но дорожек не
     // получают — именно потому, что мы шлём адресно, а не потому что их
@@ -346,8 +356,17 @@ export const joinPublicChannels = ({
     addStream: stream => {
       localStream = stream;
       for (const peerId of registry.peers()) {
+        if (!gate(peerId)) continue;
         roomOf(registry.ownerOf(peerId)).addStream(stream, {target: peerId});
       }
+    },
+    // Впустили из комнаты ожидания — отдаём то, что до сих пор придерживали.
+    admit: peerId => {
+      const owner = registry.ownerOf(peerId);
+      if (!owner) return;
+      const room = roomOf(owner);
+      if (localStream) room.addStream(localStream, {target: peerId});
+      sendScreen(room, peerId);
     },
     // Дорожка по требованию (включение микрофона/камеры человеком после
     // входа) — тот же принцип, что у addStream() выше: решает отправитель,
@@ -364,6 +383,7 @@ export const joinPublicChannels = ({
       if (!metadata) localStream = stream;
       else if (metadata.role === 'screen') sharedScreen = {track, stream, metadata};
       for (const peerId of registry.peers()) {
+        if (!gate(peerId)) continue;
         roomOf(registry.ownerOf(peerId)).addTrack(track, stream, {
           target: peerId,
           ...(metadata ? {metadata} : {}),
@@ -389,7 +409,9 @@ export const joinPublicChannels = ({
           ),
         ),
       ),
-    action: namespace => {
+    // always — служебный канал: уходит и тем, кто ещё ждёт в комнате
+    // ожидания (знак вкладки, состояние ожидания, прощание).
+    action: (namespace, {always = false} = {}) => {
       if (!namespaces.has(namespace)) namespaces.set(namespace, {actions: makeActions(namespace), onMessage: null});
       const entry = namespaces.get(namespace);
       return {
@@ -399,6 +421,7 @@ export const joinPublicChannels = ({
         send: data => {
           const targetsByOwner = new Map();
           for (const peerId of registry.peers()) {
+            if (!always && !gate(peerId)) continue;
             const owner = registry.ownerOf(peerId);
             if (!targetsByOwner.has(owner)) targetsByOwner.set(owner, []);
             targetsByOwner.get(owner).push(peerId);

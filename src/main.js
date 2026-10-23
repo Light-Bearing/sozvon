@@ -177,6 +177,8 @@ const paint = state => {
       toggleMicrophone: () => room.setMicrophone(!state.mic),
       toggleCamera: () => room.setCamera(!state.cam),
       flipCamera: () => room.flipCamera(),
+      admit: peerId => room.admit(peerId),
+      deny: peerId => room.deny(peerId),
       setZoom: value => room.setZoom(value),
       toggleScreen: () => void room.setScreen(!state.screen),
       togglePin: id => {
@@ -231,7 +233,7 @@ const tabWho = () => {
   }
 };
 
-const enter = async (secret, byHand = null) => {
+const enter = async (secret, byHand = null, {lobby = false} = {}) => {
   // При обмене вручную секрет комнаты не нужен никому, и в адресе ему
   // делать нечего: у гостя там приглашение, и стирать его нельзя.
   if (!byHand) location.hash = secret;
@@ -281,6 +283,7 @@ const enter = async (secret, byHand = null) => {
       // с разметкой и нечего забыть сбросить между звонками.
       name: myName,
       who: tabWho(),
+      lobby,
       onChange: paint,
     });
     await awake.start();
@@ -320,6 +323,8 @@ const settings = createSettings(app, {
   currentRelay: () => relay,
   currentFlow: () => room?.state().flow ?? null,
   safetyCodes: () => room?.safetyCodes?.() ?? Promise.resolve([]),
+  currentLobby: () => room?.state().lobby ?? null,
+  setLobby: on => room?.setLobby?.(on),
   version: typeof __ВЕРСИЯ__ === 'string' ? __ВЕРСИЯ__ : '',
   setRelay: (field, value) => {
     relay[field] = value.trim();
@@ -349,7 +354,15 @@ bindHotkeys(document, {
   toggleMicrophone: () => room.setMicrophone(!room.state().mic),
 });
 
-app.querySelector('#start').onclick = () => void enter(generateSecret());
+// Галка «впускать по разрешению» на первом экране. Запоминаем выбор: кто
+// раз выбрал впускать по разрешению, тот, скорее всего, хочет так всегда.
+const lobbyStart = app.querySelector('#lobby-start');
+if (lobbyStart) {
+  lobbyStart.checked = recall('комната-ожидания') === 'да';
+  lobbyStart.onchange = () => remember('комната-ожидания', lobbyStart.checked ? 'да' : null);
+}
+app.querySelector('#start').onclick = () =>
+  void enter(generateSecret(), null, {lobby: Boolean(lobbyStart?.checked)});
 app.querySelector('#retry').onclick = () => {
   // Гостю хвост адреса трогать нельзя — это и есть его приглашение: если
   // стереть, после перезагрузки будет неоткуда собрать экран приглашения

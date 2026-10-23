@@ -100,8 +100,9 @@ const fakeConnection = () => {
   };
 };
 
-const fakeConnectFn = connection => async ({handlers}) => {
+const fakeConnectFn = connection => async ({handlers, gate}) => {
   connection.handlers = handlers;
+  connection.gate = gate;
   return connection;
 };
 
@@ -111,6 +112,8 @@ const openRoom = async ({
   ladder = fakeLadder([FULL]),
   onChange = vi.fn(),
   name,
+  lobby,
+  who,
 } = {}) => {
   const room = await createRoom({
     secret: 'секрет-теста',
@@ -119,6 +122,8 @@ const openRoom = async ({
     ladder,
     onChange,
     name,
+    lobby,
+    ...(who ? {who} : {}),
   });
   return {room, connection, media, ladder, onChange};
 };
@@ -1518,5 +1523,146 @@ describe('перезагрузил страницу — вернулся, а н�
     connection.channel('who').onMessage('<script>', {peerId: 'петя'});
 
     expect(room.state().peers).toHaveLength(2);
+  });
+});
+
+
+describe('комната ожидания', () => {
+  const ЗНАК_ГОСТЯ = 'znak-gostya-0001';
+  const лобби = c => c.channel('lobby');
+  const войти = (c, peerId, {name, who} = {}) => {
+    c.handlers.onPeerJoin(peerId);
+    if (name) c.channel('name').onMessage(name, {peerId});
+    if (who) c.channel('who').onMessage(who, {peerId});
+  };
+  const хозяин = async () => {
+    const connection = fakeConnection();
+    connection.admit = vi.fn();
+    connection.selfId = 'номер-хозяина';
+    const opened = await openRoom({connection, lobby: true, who: 'znak-hozyaina-01'});
+    return opened;
+  };
+
+  it('новый человек ждёт: не виден, ему не шлём, он в списке ждущих', async () => {
+    const {room, connection} = await хозяин();
+    войти(connection, 'гость', {name: 'Маша', who: ЗНАК_ГОСТЯ});
+
+    expect(room.state().peers).toEqual([]);
+    expect(room.state().lobby.waiting).toEqual([{peerId: 'гость', name: 'Маша'}]);
+    expect(connection.gate('гость')).toBe(false);
+    expect(connection.admit).not.toHaveBeenCalled();
+  });
+
+  it('впустили — виден, получает наше, остальным уходит новое состояние', async () => {
+    const {room, connection} = await хозяин();
+    войти(connection, 'гость', {name: 'Маша', who: ЗНАК_ГОСТЯ});
+
+    room.admit('гость');
+
+    expect(room.state().peers.map(p => p.peerId)).toEqual(['гость']);
+    expect(connection.gate('гость')).toBe(true);
+    expect(connection.admit).toHaveBeenCalledWith('гость');
+    const последнее = лобби(connection).sent.at(-1);
+    expect(последнее.on).toBe(true);
+    expect(последнее.admitted).toEqual(expect.arrayContaining(['гость', ЗНАК_ГОСТЯ]));
+  });
+
+  it('пока ждёт — его переписка, звук и камера в разговор не попадают', async () => {
+    const {room, connection} = await хозяин();
+    войти(connection, 'гость', {who: ЗНАК_ГОСТЯ});
+
+    connection.channel('chat').onMessage('я тут подслушиваю', {peerId: 'гость'});
+    connection.channel('media').onMessage({mic: true, cam: true}, {peerId: 'гость'});
+
+    expect(room.state().messages).toEqual([]);
+  });
+
+  it('ждущий не может сам выключить ожидание', async () => {
+    const {room, connection} = await хозяин();
+    войти(connection, 'гость', {who: ЗНАК_ГОСТЯ});
+
+    лобби(connection).onMessage({v: 99, on: false, admitted: [ЗНАК_ГОСТЯ]}, {peerId: 'гость'});
+
+    expect(room.state().lobby.on).toBe(true);
+    expect(room.state().peers).toEqual([]);
+  });
+
+  it('не впустили — ждущий пропадает из списка', async () => {
+    const {room, connection} = await хозяин();
+    войти(connection, 'гость', {who: ЗНАК_ГОСТЯ});
+
+    room.deny('гость');
+
+    expect(room.state().lobby.waiting).toEqual([]);
+    expect(лобби(connection).sent.at(-1)).toEqual({deny: ЗНАК_ГОСТЯ});
+  });
+
+  it('впущенный перезагрузил страницу — по знаку вкладки, без ожидания', async () => {
+    const {room, connection} = await хозяин();
+    войти(connection, 'гость', {who: ЗНАК_ГОСТЯ});
+    room.admit('гость');
+
+    войти(connection, 'гость-после-перезагрузки', {who: ЗНАК_ГОСТЯ});
+
+    expect(room.state().peers.map(p => p.peerId)).toContain('гость-после-перезагрузки');
+  });
+
+  it('у кого-то старая версия — об этом знаем: она впускает всех', async () => {
+    const {room, connection} = await хозяин();
+    войти(connection, 'старый', {who: 'znak-starogo-001'});
+    room.admit('старый');
+
+    expect(room.state().lobby.unaware).toBe(1);
+    лобби(connection).onMessage({v: 1, on: true, admitted: []}, {peerId: 'старый'});
+    expect(room.state().lobby.unaware).toBe(0);
+  });
+
+  describe('со стороны ждущего', () => {
+    const гость = async () => {
+      const connection = fakeConnection();
+      connection.admit = vi.fn();
+      connection.selfId = 'номер-гостя';
+      return openRoom({connection, who: ЗНАК_ГОСТЯ});
+    };
+
+    it('узнал, что в комнате ожидание и его не впустили, — ждёт и никого не видит', async () => {
+      const {room, connection} = await гость();
+      войти(connection, 'хозяин', {name: 'Хозяин'});
+
+      лобби(connection).onMessage({v: 1, on: true, admitted: ['хозяин']}, {peerId: 'хозяин'});
+
+      expect(room.state().lobby.self).toBe('waiting');
+      expect(room.state().peers).toEqual([]);
+    });
+
+    it('впустили — видит всех и рассказывает о себе', async () => {
+      const {room, connection} = await гость();
+      войти(connection, 'хозяин', {name: 'Хозяин'});
+      лобби(connection).onMessage({v: 1, on: true, admitted: ['хозяин']}, {peerId: 'хозяин'});
+      connection.channel('name').sent.length = 0;
+
+      лобби(connection).onMessage({v: 1, on: true, admitted: ['хозяин', ЗНАК_ГОСТЯ]}, {peerId: 'хозяин'});
+
+      expect(room.state().lobby.self).toBe(null);
+      expect(room.state().peers.map(p => p.peerId)).toEqual(['хозяин']);
+      expect(connection.channel('name').sent).toHaveLength(1);
+    });
+
+    it('отказали — так и написано', async () => {
+      const {room, connection} = await гость();
+      войти(connection, 'хозяин');
+
+      лобби(connection).onMessage({deny: ЗНАК_ГОСТЯ}, {peerId: 'хозяин'});
+
+      expect(room.state().lobby.self).toBe('denied');
+    });
+  });
+
+  it('без ожидания — всё как раньше', async () => {
+    const {room, connection} = await openRoom();
+    connection.handlers.onPeerJoin('гость');
+
+    expect(room.state().peers.map(p => p.peerId)).toEqual(['гость']);
+    expect(room.state().lobby.on).toBe(false);
   });
 });

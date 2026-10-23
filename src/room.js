@@ -37,6 +37,10 @@ export const createRoom = async ({
   // в sessionStorage), а номер в сети при перезагрузке новый. По знаку
   // собеседники узнают вернувшегося — см. канал 'who' ниже.
   who = makeWho(),
+  // Комната ожидания: новый человек не видит, не слышит и не виден, пока
+  // кто-то из уже впущенных его не впустит. Задаёт хозяин при создании;
+  // любой впущенный может переключить её в настройках.
+  lobby = false,
 }) => {
   const peers = new Map();
   // Экраны собеседников — отдельно от лиц: это две разные картинки, и
@@ -101,6 +105,29 @@ export const createRoom = async ({
   let cameras = 0;
   let flipping = false;
 
+  // ── комната ожидания ──────────────────────────────────────
+  //
+  // Без сервера решать некому, кроме самих участников: каждый у себя не
+  // шлёт не впущенному ничего своего (привратник в канале связи) и не
+  // показывает его. Впустил один — рассылает новое состояние остальным.
+  // Состояние (включена ли и кто впущен) идёт с номером версии; принимаем
+  // его только от уже впущенных — иначе ждущий сам выключил бы ожидание.
+  // Впущенных помним и по номеру в сети, и по знаку вкладки: перезагрузил
+  // страницу — не ждёт заново.
+  let lobbyOn = Boolean(lobby);
+  let lobbyV = lobbyOn ? 1 : 0;
+  const admitted = new Set();
+  const denied = new Set();
+  // Кто вообще знает о комнате ожидания: старые версии её не понимают и
+  // впускают всех — об этом надо предупредить.
+  const lobbyAware = new Set();
+  let selfWaiting = false;
+  let selfDenied = false;
+  let admittedPeers = new Set();
+  const isAdmitted = peerId =>
+    !lobbyOn || admitted.has(peerId) || (whoOf.has(peerId) && admitted.has(whoOf.get(peerId)));
+  const MAX_ID = 64;
+
   const state = () => ({
     // При обмене вручную вместо ссылки на комнату — то, что везёт человек:
     // у хозяина ссылка с его описанием, у гостя код ответа. Пока адреса
@@ -134,7 +161,18 @@ export const createRoom = async ({
     selfFace,
     notice,
     devices: media.chosen?.() ?? {microphone: null, camera: null},
-    peers: [...peers.entries()].map(([peerId, stream]) => ({
+    lobby: {
+      on: lobbyOn,
+      self: selfDenied ? 'denied' : selfWaiting ? 'waiting' : null,
+      waiting: selfWaiting
+        ? []
+        : [...peers.keys()]
+            .filter(peerId => !isAdmitted(peerId) && !denied.has(peerId))
+            .map(peerId => ({peerId, name: names.get(peerId) ?? 'Кто-то'})),
+      // Впущенные со старой версией: они впускают всех без спроса.
+      unaware: [...peers.keys()].filter(peerId => isAdmitted(peerId) && !lobbyAware.has(peerId)).length,
+    },
+    peers: [...peers.entries()].filter(([peerId]) => !selfWaiting && isAdmitted(peerId)).map(([peerId, stream]) => ({
       peerId,
       stream,
       screen: screens.get(peerId) ?? null,
@@ -173,6 +211,45 @@ export const createRoom = async ({
   let screensChannel = null;
   let mediaChannel = null;
   let whoChannel = null;
+  let lobbyChannel = null;
+
+  const tellLobby = () =>
+    void lobbyChannel?.send({v: lobbyV, on: lobbyOn, admitted: [...admitted]});
+
+  // Своё — тем, кто только что стал впущенным: имя, камера, экран, лицо.
+  // Каналы сами шлют только впущенным, поэтому шлём всем.
+  const tellAboutMe = () => {
+    void namesChannel?.send(myName);
+    void screensChannel?.send(screenWanted);
+    void mediaChannel?.send({mic: microphoneWanted, cam: cameraWanted});
+    if (selfFace) void faceChannel?.send(selfFace);
+  };
+
+  // Что-то поменялось в комнате ожидания: кого теперь впустили — отдаём им
+  // своё; впустили нас — рассказываем о себе.
+  const lobbyChanged = () => {
+    const wasWaiting = selfWaiting;
+    selfWaiting = lobbyOn && !admitted.has(who) && !admitted.has(connection?.selfId ?? '');
+    const nowIn = new Set([...peers.keys()].filter(isAdmitted));
+    let fresh = false;
+    for (const peerId of nowIn) {
+      if (admittedPeers.has(peerId)) continue;
+      connection?.admit?.(peerId);
+      fresh = true;
+    }
+    admittedPeers = nowIn;
+    if (fresh || (wasWaiting && !selfWaiting)) tellAboutMe();
+    announce();
+  };
+
+  const admitSelfAndPresent = () => {
+    admitted.add(who);
+    if (connection?.selfId) admitted.add(connection.selfId);
+    for (const peerId of peers.keys()) {
+      admitted.add(peerId);
+      if (whoOf.has(peerId)) admitted.add(whoOf.get(peerId));
+    }
+  };
   let faceChannel = null;
   let memeChannel = null;
   let byeChannel = null;
@@ -205,6 +282,7 @@ export const createRoom = async ({
   const nameByWho = new Map();
 
   const forget = peerId => {
+    lobbyAware.delete(peerId);
     whoOf.delete(peerId);
     peers.delete(peerId);
     screens.delete(peerId);
@@ -318,6 +396,7 @@ export const createRoom = async ({
     connection = await connectFn({
       secret,
       families,
+      gate: peerId => isAdmitted(peerId),
       onQuiet: isQuiet => {
         if (quiet === isQuiet) return;
         quiet = isQuiet;
@@ -347,6 +426,8 @@ export const createRoom = async ({
           void screensChannel?.send(screenWanted);
           void mediaChannel?.send({mic: microphoneWanted, cam: cameraWanted});
           void whoChannel?.send(who);
+          tellLobby();
+          if (isAdmitted(peerId)) admittedPeers.add(peerId);
           // Где наше лицо — сразу, а не через пару секунд: иначе новичок
           // первые мгновения видел бы нас обрезанными как попало.
           if (selfFace) void faceChannel?.send(selfFace);
@@ -391,6 +472,11 @@ export const createRoom = async ({
     throw error;
   }
 
+  // При обмене вручную собеседник один и пришёл по личному коду — ждать ему
+  // нечего. Иначе создатель комнаты с ожиданием впущен с самого начала.
+  if (connection.manual) lobbyOn = false;
+  if (lobbyOn) admitSelfAndPresent();
+
   announce();
 
   const tracker = createSpeakingTracker();
@@ -414,6 +500,8 @@ export const createRoom = async ({
   // Вторым аргументом приходит объект с полем peerId, а не сам идентификатор.
   if (levels) {
     levels.onMessage = (value, {peerId}) => {
+      // Из комнаты ожидания в разговор ничего не попадает.
+      if (!isAdmitted(peerId)) return;
       tracker.report(peerId, value);
       refreshSpeaking();
     };
@@ -422,6 +510,8 @@ export const createRoom = async ({
   chatChannel = typeof connection.action === 'function' ? connection.action('chat') : null;
   if (chatChannel) {
     chatChannel.onMessage = (raw, {peerId}) => {
+      // Из комнаты ожидания в разговор ничего не попадает.
+      if (!isAdmitted(peerId)) return;
       // Текст чужой, поэтому чистится ровно так же, как свой. На экран он
       // попадает только через textContent (см. src/ui/chat.js).
       if (!chat.add({text: raw, from: names.get(peerId) ?? null})) return;
@@ -439,7 +529,7 @@ export const createRoom = async ({
   // пересогласовании» по её состоянию нельзя. Гадали бы — плитка либо
   // висела бы вечно после конца показа, либо моргала бы на каждом
   // пересогласовании.
-  byeChannel = typeof connection.action === 'function' ? connection.action('bye') : null;
+  byeChannel = typeof connection.action === 'function' ? connection.action('bye', {always: true}) : null;
   if (byeChannel) {
     byeChannel.onMessage = (_, {peerId}) => {
       if (gone.has(peerId) || !peers.has(peerId)) return;
@@ -455,6 +545,8 @@ export const createRoom = async ({
   faceChannel = typeof connection.action === 'function' ? connection.action('face') : null;
   if (faceChannel) {
     faceChannel.onMessage = (value, {peerId}) => {
+      // Из комнаты ожидания в разговор ничего не попадает.
+      if (!isAdmitted(peerId)) return;
       if (gone.has(peerId)) return;
       const face = cleanFace(value);
       if (face) peerFace.set(peerId, face);
@@ -468,6 +560,8 @@ export const createRoom = async ({
   memeChannel = typeof connection.action === 'function' ? connection.action('meme') : null;
   if (memeChannel) {
     memeChannel.onMessage = (value, {peerId}) => {
+      // Из комнаты ожидания в разговор ничего не попадает.
+      if (!isAdmitted(peerId)) return;
       const name = cleanMeme(value);
       if (!name || gone.has(peerId) || !peers.has(peerId)) return;
       showMeme(peerId, name);
@@ -478,6 +572,8 @@ export const createRoom = async ({
   mediaChannel = typeof connection.action === 'function' ? connection.action('media') : null;
   if (mediaChannel) {
     mediaChannel.onMessage = (value, {peerId}) => {
+      // Из комнаты ожидания в разговор ничего не попадает.
+      if (!isAdmitted(peerId)) return;
       peerMedia.set(peerId, {mic: Boolean(value?.mic), cam: Boolean(value?.cam)});
       announce();
     };
@@ -486,6 +582,8 @@ export const createRoom = async ({
   screensChannel = typeof connection.action === 'function' ? connection.action('screen') : null;
   if (screensChannel) {
     screensChannel.onMessage = (on, {peerId}) => {
+      // Из комнаты ожидания в разговор ничего не попадает.
+      if (!isAdmitted(peerId)) return;
       screenSaid.set(peerId, Boolean(on));
       // Начал показ: дорожка могла приехать раньше слов — тогда её уже
       // держим, и плитка появляется сразу.
@@ -515,7 +613,7 @@ export const createRoom = async ({
   // соединение раньше, чем прощание уходит. Без знака остальные видели
   // «связь прервалась» и ещё несколько секунд — призрачную плитку.
   // Старые версии этого канала не знают и молча его пропускают.
-  whoChannel = typeof connection.action === 'function' ? connection.action('who') : null;
+  whoChannel = typeof connection.action === 'function' ? connection.action('who', {always: true}) : null;
   if (whoChannel) {
     whoChannel.onMessage = (value, {peerId}) => {
       if (typeof value !== 'string' || !WHO.test(value) || value === who) return;
@@ -526,6 +624,8 @@ export const createRoom = async ({
       peerByWho.set(value, peerId);
       whoOf.set(peerId, value);
       if (names.has(peerId)) nameByWho.set(value, names.get(peerId));
+      // Впущенный перезагрузил страницу — узнали по знаку, ждать ему незачем.
+      lobbyChanged();
       if (!before || before === peerId) return;
       const name = known ?? names.get(peerId) ?? 'Собеседник';
       // Прежняя вкладка ещё числится в разговоре — убираем её молча: это
@@ -536,6 +636,36 @@ export const createRoom = async ({
       }
       tell(`${name} снова в разговоре`);
       announce();
+    };
+  }
+
+  lobbyChannel = typeof connection.action === 'function' ? connection.action('lobby', {always: true}) : null;
+  if (lobbyChannel) {
+    lobbyChannel.onMessage = (value, {peerId}) => {
+      if (!value || typeof value !== 'object') return;
+      lobbyAware.add(peerId);
+      // Отказ — адресный, по знаку или номеру ждущего.
+      if (typeof value.deny === 'string') {
+        if (value.deny === who || value.deny === connection.selfId) {
+          selfDenied = true;
+          announce();
+        }
+        return;
+      }
+      // Менять состояние может только уже впущенный.
+      if (!isAdmitted(peerId)) {
+        announce();
+        return;
+      }
+      const v = Number(value.v);
+      if (Number.isFinite(v) && v > lobbyV) {
+        lobbyV = v;
+        lobbyOn = Boolean(value.on);
+      }
+      for (const id of Array.isArray(value.admitted) ? value.admitted : []) {
+        if (typeof id === 'string' && id.length <= MAX_ID) admitted.add(id);
+      }
+      lobbyChanged();
     };
   }
 
@@ -965,6 +1095,29 @@ export const createRoom = async ({
       if (!clean) return;
       showMeme('self', clean);
       void memeChannel?.send(clean);
+      announce();
+    },
+
+    // Комната ожидания: включить или выключить для этого разговора. Кто уже
+    // в разговоре — остаётся, ждать будут только новые.
+    setLobby: on => {
+      if (connection?.manual) return;
+      lobbyV += 1;
+      lobbyOn = Boolean(on);
+      if (lobbyOn) admitSelfAndPresent();
+      tellLobby();
+      lobbyChanged();
+    },
+    admit: peerId => {
+      admitted.add(peerId);
+      if (whoOf.has(peerId)) admitted.add(whoOf.get(peerId));
+      denied.delete(peerId);
+      tellLobby();
+      lobbyChanged();
+    },
+    deny: peerId => {
+      denied.add(peerId);
+      void lobbyChannel?.send({deny: whoOf.get(peerId) ?? peerId});
       announce();
     },
 

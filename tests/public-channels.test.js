@@ -939,3 +939,76 @@ describe('после долгого обрыва — заново в комна�
     await connection.leave();
   });
 });
+
+describe('привратник комнаты ожидания', () => {
+  let fakes;
+  let connection;
+  let пускать;
+
+  beforeEach(() => {
+    пускать = new Set(['свой']);
+    fakes = Object.fromEntries(FAMILY_NAMES.map(name => [name, createFakeRoom()]));
+    const families = FAMILY_NAMES.map(family => ({
+      family,
+      join: (_c, _r, callbacks) => {
+        fakes[family].callbacks = callbacks;
+        return fakes[family].room;
+      },
+      getRelaySockets: () => fakes[family].sockets,
+    }));
+    connection = joinPublicChannels({
+      roomId: 'r',
+      password: 'p',
+      handlers: {},
+      families,
+      keepTrying: () => null,
+      gate: peerId => пускать.has(peerId),
+    });
+  });
+
+  const [первое] = FAMILY_NAMES;
+
+  it('ждущему не уходит ни поток, ни дорожка, ни сообщение', () => {
+    const stream = {id: 's'};
+    connection.addStream(stream);
+    fakes[первое].join('ждущий');
+    connection.addTrack({id: 't'}, stream);
+    void connection.action('chat').send('секрет');
+
+    expect(fakes[первое].addStreamCalls).toEqual([]);
+    expect(fakes[первое].addTrackCalls).toEqual([]);
+    expect(fakes[первое].action('chat').calls).toEqual([]);
+  });
+
+  it('служебное — уходит и ждущему', () => {
+    fakes[первое].join('ждущий');
+
+    void connection.action('lobby', {always: true}).send({v: 1});
+
+    expect(fakes[первое].action('lobby').calls).toEqual([{data: {v: 1}, target: ['ждущий']}]);
+  });
+
+  it('впустили — получает поток и показ экрана, который придерживали', () => {
+    const stream = {id: 's'};
+    connection.addStream(stream);
+    connection.addTrack({id: 'экран'}, {id: 'поток-экрана'}, {role: 'screen'});
+    fakes[первое].join('ждущий');
+
+    пускать.add('ждущий');
+    connection.admit('ждущий');
+
+    expect(fakes[первое].addStreamCalls).toEqual([{stream, target: 'ждущий'}]);
+    expect(fakes[первое].addTrackCalls).toEqual([
+      {track: {id: 'экран'}, stream: {id: 'поток-экрана'}, target: 'ждущий', metadata: {role: 'screen'}},
+    ]);
+  });
+
+  it('впущенный получает всё сразу при входе, как раньше', () => {
+    const stream = {id: 's'};
+    connection.addStream(stream);
+
+    fakes[первое].join('свой');
+
+    expect(fakes[первое].addStreamCalls).toEqual([{stream, target: 'свой'}]);
+  });
+});

@@ -111,7 +111,9 @@ const открыть = async url => {
   // Настоящее нажатие: без жеста человека браузер не пускает звук.
   const нажать = async selector => {
     const box = await ev(`(() => {
-      const r = document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect();
+      const el = document.querySelector(${JSON.stringify(selector)});
+      el?.scrollIntoView({block: 'center', inline: 'center'});
+      const r = el?.getBoundingClientRect();
       return r ? {x: r.left + r.width / 2, y: r.top + r.height / 2} : null;
     })()`);
     if (!box) return false;

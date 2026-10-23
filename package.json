@@ -17,7 +17,8 @@
     "check:cross": "node tools/cross-check.mjs",
     "check:screen": "node tools/screen-check.mjs",
     "check:reload": "node tools/reload-check.mjs",
-    "check:outage": "node tools/outage-check.mjs"
+    "check:outage": "node tools/outage-check.mjs",
+    "check:lobby": "node tools/lobby-check.mjs"
   },
   "keywords": [],
   "author": "",

@@ -503,6 +503,60 @@ const bindCameraTools = (box, state, actions) => {
   }
 };
 
+// Кто просится войти. Строки не пересоздаём на каждой перерисовке (их
+// несколько в секунду): иначе фокус с кнопки «Впустить» слетал бы, и с
+// клавиатуры её было бы не нажать. Имена — только текстом: они из сети.
+const renderKnock = (container, lobby, actions) => {
+  const box = container.querySelector('#knock');
+  const list = container.querySelector('#knock-list');
+  if (!box || !list) return;
+  const waiting = lobby?.self ? [] : (lobby?.waiting ?? []);
+  const keep = new Set(waiting.map(w => w.peerId));
+  for (const item of [...list.children]) if (!keep.has(item.dataset.peer)) item.remove();
+  for (const {peerId, name} of waiting) {
+    let item = [...list.children].find(li => li.dataset.peer === peerId);
+    if (!item) {
+      item = document.createElement('li');
+      item.dataset.peer = peerId;
+      const who = document.createElement('span');
+      who.className = 'knock-who';
+      const yes = document.createElement('button');
+      yes.type = 'button';
+      yes.className = 'act act--primary';
+      yes.textContent = 'Впустить';
+      const no = document.createElement('button');
+      no.type = 'button';
+      no.className = 'act';
+      no.textContent = 'Не впускать';
+      item.append(who, yes, no);
+      list.append(item);
+    }
+    const [who, yes, no] = item.children;
+    const text = `${name} хочет войти`;
+    if (who.textContent !== text) who.textContent = text;
+    yes.setAttribute('aria-label', `Впустить: ${name}`);
+    no.setAttribute('aria-label', `Не впускать: ${name}`);
+    yes.onclick = () => actions.admit?.(peerId);
+    no.onclick = () => actions.deny?.(peerId);
+  }
+  box.hidden = waiting.length === 0;
+
+  const wait = container.querySelector('#lobby-wait');
+  if (wait) {
+    wait.hidden = !lobby?.self;
+    const title = container.querySelector('#lobby-wait-title');
+    const note = container.querySelector('#lobby-wait-note');
+    if (lobby?.self === 'denied') {
+      title.textContent = 'Вас не впустили';
+      note.textContent = 'Участники разговора решили не впускать. Если это ошибка — попросите прислать ссылку заново.';
+    } else if (lobby?.self === 'waiting') {
+      title.textContent = 'Ждём, когда вас впустят';
+      note.textContent = 'В этом разговоре впускают по разрешению. Как только кто-то из участников нажмёт «Впустить», вы окажетесь внутри.';
+    }
+  }
+  container.dataset.waiting = lobby?.self ? 'да' : '';
+};
+
 export const renderCall = (container, state, actions) => {
   const alone = state.peers.length === 0;
   container.dataset.busy = alone ? 'no' : 'yes';
@@ -680,6 +734,7 @@ export const renderCall = (container, state, actions) => {
   container.querySelector('#quiet').hidden = !state.quiet || Boolean(trouble) || Boolean(manual);
 
   bindCopy(container, state.link);
+  renderKnock(container, state.lobby, actions);
 
   const mic = container.querySelector('#mic');
   bindToggle(mic, state.mic, actions.toggleMicrophone);

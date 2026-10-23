@@ -96,6 +96,23 @@ export const renderSafety = async (panel, getCodes) => {
   box.hidden = codes.length === 0;
 };
 
+// Переключатель комнаты ожидания — только внутри разговора (вне его
+// переключать нечего) и не при обмене вручную. Старые версии у
+// собеседников ожидания не понимают и впускают всех — говорим об этом.
+export const renderLobbySwitch = (panel, lobby) => {
+  const row = panel.querySelector('#lobby-row');
+  const box = panel.querySelector('#lobby');
+  const note = panel.querySelector('#lobby-note');
+  if (!row || !box) return;
+  row.hidden = !lobby;
+  if (!lobby) return;
+  box.checked = Boolean(lobby.on);
+  note.textContent =
+    lobby.on && lobby.unaware > 0
+      ? `Внимание: у ${lobby.unaware === 1 ? 'одного участника' : `${lobby.unaware} участников`} старая версия — они впускают всех без спроса. Пусть обновят страницу.`
+      : 'Новый человек ждёт, пока кто-то из вас его впустит. Кто уже в разговоре — остаётся';
+};
+
 export const createSettings = (root, actions) => {
   const panel = root.querySelector('#settings');
   const nameInput = root.querySelector('#name-input');
@@ -146,6 +163,7 @@ export const createSettings = (root, actions) => {
     relaySecret.value = relay.secret ?? '';
     renderDevices(panel, await listDevices(), actions.currentDevices());
     await renderSafety(panel, actions.safetyCodes);
+    renderLobbySwitch(panel, actions.currentLobby?.());
     panel.hidden = false;
     showFlow();
     flowTimer = setInterval(showFlow, 2000);
@@ -199,6 +217,13 @@ export const createSettings = (root, actions) => {
   if (mirror) mirror.onchange = () => actions.setMirror?.(mirror.checked);
   if (faceFollow) faceFollow.onchange = () => actions.setVision?.({face: faceFollow.checked});
   if (memes) memes.onchange = () => actions.setVision?.({gestures: memes.checked});
+  const lobbyBox = root.querySelector('#lobby');
+  if (lobbyBox) {
+    lobbyBox.onchange = () => {
+      actions.setLobby?.(lobbyBox.checked);
+      renderLobbySwitch(panel, actions.currentLobby?.());
+    };
+  }
 
   relayAddress.oninput = () => actions.setRelay?.('address', relayAddress.value);
   relaySecret.oninput = () => actions.setRelay?.('secret', relaySecret.value);

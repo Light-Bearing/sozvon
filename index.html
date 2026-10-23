@@ -102,6 +102,14 @@
             <input class="field-input" type="text" maxlength="24" autocomplete="off"
                    spellcheck="false" data-name />
           </label>
+          <label class="switch switch--start">
+            <input id="lobby-start" type="checkbox" />
+            <span class="switch-box" aria-hidden="true"></span>
+            <span class="switch-text">
+              Впускать по разрешению
+              <span class="switch-note">Пришедший по ссылке ждёт, пока кто-то из вас его впустит</span>
+            </span>
+          </label>
           <button id="start" class="act act--primary" type="button">Позвонить</button>
         </div>
         <footer class="pane-foot">
@@ -178,6 +186,19 @@
         <!-- Кто пропал и как: сам ушёл или связь прервалась. Без этой строки
              плитка исчезала молча, и одно было не отличить от другого. -->
         <p id="notice" class="notice" role="status" hidden></p>
+
+        <!-- Комната ожидания. Впущенным — кто просится войти; ждущему —
+             что его ещё не впустили (или не впустили вовсе). -->
+        <section id="knock" class="knock" aria-label="Просятся войти" hidden>
+          <ul id="knock-list" class="knock-list"></ul>
+        </section>
+        <div id="lobby-wait" class="lobby-wait" role="status" hidden>
+          <p class="lobby-wait-title" id="lobby-wait-title">Ждём, когда вас впустят</p>
+          <p class="lobby-wait-note" id="lobby-wait-note">
+            В этом разговоре впускают по разрешению. Как только кто-то из
+            участников нажмёт «Впустить», вы окажетесь внутри.
+          </p>
+        </div>
 
         <button id="sound-blocked" class="sound-blocked" type="button" hidden>
           Нажмите, чтобы включить звук
@@ -269,6 +290,15 @@
               <span class="switch-text">
                 Мемы по жестам
                 <span class="switch-note" id="memes-note">👍 ✌️ ✋ ☝️ 🤟 перед камерой — и на вашей плитке у всех мем. Распознаётся здесь, в браузере; при первом включении скачается около 12 МБ</span>
+              </span>
+            </label>
+
+            <label class="switch" id="lobby-row">
+              <input id="lobby" type="checkbox" />
+              <span class="switch-box" aria-hidden="true"></span>
+              <span class="switch-text">
+                Впускать по разрешению
+                <span class="switch-note" id="lobby-note">Новый человек ждёт, пока кто-то из вас его впустит. Кто уже в разговоре — остаётся</span>
               </span>
             </label>
 

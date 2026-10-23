@@ -1133,3 +1133,64 @@ describe('ступеньки приближения', () => {
     expect(nextZoom({min: 1, max: 8, value: 2.4})).toBe(3);
   });
 });
+
+describe('комната ожидания на экране', () => {
+  const ждут = (...people) => ({on: true, self: null, waiting: people, unaware: 0});
+
+  it('впущенный видит, кто просится, и может впустить или нет', () => {
+    const el = root();
+    const actions = {...fakeActions(), admit: vi.fn(), deny: vi.fn()};
+    renderCall(el, baseState({lobby: ждут({peerId: 'маша', name: 'Маша'})}), actions);
+
+    const строка = el.querySelector('#knock-list li');
+    expect(el.querySelector('#knock').hidden).toBe(false);
+    expect(строка.textContent).toContain('Маша хочет войти');
+    const [, впустить, нет] = строка.children;
+    впустить.click();
+    нет.click();
+    expect(actions.admit).toHaveBeenCalledWith('маша');
+    expect(actions.deny).toHaveBeenCalledWith('маша');
+  });
+
+  it('строка не пересоздаётся на перерисовке — фокус с кнопки не слетает', () => {
+    const el = root();
+    const state = baseState({lobby: ждут({peerId: 'маша', name: 'Маша'})});
+    renderCall(el, state, fakeActions());
+    const первая = el.querySelector('#knock-list li');
+
+    renderCall(el, state, fakeActions());
+
+    expect(el.querySelector('#knock-list li')).toBe(первая);
+  });
+
+  it('имя из сети — только текстом', () => {
+    const el = root();
+    renderCall(el, baseState({lobby: ждут({peerId: 'x', name: '<img src=x onerror=alert(1)>'})}), fakeActions());
+
+    expect(el.querySelector('#knock-list img')).toBe(null);
+  });
+
+  it('ждущий видит «ждём, когда впустят», а разговор от него спрятан', () => {
+    const el = root();
+    renderCall(el, baseState({lobby: {on: true, self: 'waiting', waiting: [], unaware: 0}}), fakeActions());
+
+    expect(el.querySelector('#lobby-wait').hidden).toBe(false);
+    expect(el.querySelector('#lobby-wait-title').textContent).toBe('Ждём, когда вас впустят');
+    expect(el.dataset.waiting).toBe('да');
+  });
+
+  it('не впустили — так и написано', () => {
+    const el = root();
+    renderCall(el, baseState({lobby: {on: true, self: 'denied', waiting: [], unaware: 0}}), fakeActions());
+
+    expect(el.querySelector('#lobby-wait-title').textContent).toBe('Вас не впустили');
+  });
+
+  it('без ожидания ничего этого нет', () => {
+    const el = root();
+    renderCall(el, baseState(), fakeActions());
+
+    expect(el.querySelector('#knock').hidden).toBe(true);
+    expect(el.querySelector('#lobby-wait').hidden).toBe(true);
+  });
+});
