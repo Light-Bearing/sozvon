@@ -54,9 +54,45 @@ const mediapipeRuntime = () => ({
   },
 });
 
+// Политика безопасности страницы: код — только с самого сайта, связи —
+// только с ним же и с каналами по защищённым сокетам. Если когда-нибудь
+// найдётся способ подсунуть разметку через имя или переписку, чужой
+// скрипт не запустится и никуда ничего не отправит.
+//
+// Только в сборке: дев-сервер вставляет стили и скрипты на лету, и под
+// строгой политикой разработка перестала бы работать. Звонку политика не
+// мешает — соединения между браузерами ей не подчиняются.
+// 'wasm-unsafe-eval' — для модуля распознавания лица и жестов (WebAssembly).
+export const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "style-src 'self'",
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob: mediastream:",
+  "font-src 'self'",
+  "connect-src 'self' wss:",
+  // blob: — фоновые таймеры клиента MQTT (одного из каналов). Создать такой
+  // обработчик может только код, уже работающий на этом сайте.
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'none'",
+].join('; ');
+
+const securityPolicy = () => ({
+  name: 'политика-безопасности',
+  apply: 'build',
+  transformIndexHtml: html =>
+    html.replace(
+      /<meta charset="[^"]*"\s*\/?>/i,
+      match => `${match}\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`,
+    ),
+});
+
 export default defineConfig({
   define: {__ВЕРСИЯ__: JSON.stringify(version)},
-  plugins: [versionFile(), mediapipeRuntime()],
+  plugins: [versionFile(), mediapipeRuntime(), securityPolicy()],
   // Относительный путь обязателен: на GitHub Pages сайт лежит не в корне домена.
   base: './',
   build: {target: 'es2022'},

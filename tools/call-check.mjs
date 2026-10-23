@@ -116,6 +116,9 @@ const открыть = async url => {
   // Счётчик ставится ДО загрузки: соединения библиотека создаёт сразу.
   await send('Page.addScriptToEvaluateOnNewDocument', {
     source: `
+      window.__нарушения = [];
+      document.addEventListener('securitypolicyviolation', e =>
+        window.__нарушения.push(e.violatedDirective + ' ← ' + (e.blockedURI || 'встроенное')));
       window.__описания = [];
       window.__соединения = [];
       const PC0 = window.RTCPeerConnection;
@@ -378,6 +381,11 @@ const ответы = [...уХозяина, ...уГостя].filter(x => x.kind =
   'отвечающие получают ретранслятор',
   `${ответы.filter(x => x.turn).length} из ${ответы.length}`,
 );
+
+// Политика безопасности (она есть только в сборке) ничего нужного не
+// запретила: ни у хозяина, ни у гостя.
+const нарушения = [...((await хозяин.ev('window.__нарушения')) ?? []), ...((await гость.ev('window.__нарушения')) ?? [])];
+отметить(нарушения.length === 0, 'политика безопасности ничего не запретила', нарушения.slice(0, 3).join('; '));
 
 const провалов = итоги.filter(ok => !ok).length;
 console.log(провалов ? `\nПровалено проверок: ${провалов} из ${итоги.length}` : `\nВсе ${итоги.length} проверок прошли`);
